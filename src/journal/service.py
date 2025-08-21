@@ -13,7 +13,7 @@ import time
 from ..core.logging import get_logger
 from ..core.exceptions import SlackToJournalError
 from ..settings import AppSettings
-from ..slack_integration.service import SlackService
+from ..slack_integration.adapter import SlackAdapter
 from ..ai_processing.service import AIProcessingService
 from ..drive_integration.service import DriveService
 from .schemas import (
@@ -44,7 +44,7 @@ class JournalService:
         self.settings = settings
         
         # Initialize component services
-        self.slack_service = SlackService(settings.slack)
+        self.slack_service = SlackAdapter(settings.slack)
         self.ai_service = AIProcessingService(settings.gemini)
         self.drive_service = DriveService(settings.google_drive)
         
