@@ -1,0 +1,30 @@
+# SlackToJournal Configuration File
+# This file contains the main application configuration
+# Environment variables will override these settings
+
+app:
+  name: "SlackToJournal"
+  version: "0.1.0"
+  debug: false
+
+slack:
+  mcp_server_url: "http://localhost:3000"
+  workspace_id: "your-workspace-id"
+
+gemini:
+  # API key should be set via environment variable GEMINI_API_KEY
+  model: "gemini-2.0-flash-exp"
+  max_tokens: 8192
+  temperature: 0.1
+
+google_drive:
+  credentials_file: "configs/credentials/google_credentials.json"
+  # Folder ID should be set via environment variable GOOGLE_FOLDER_ID
+
+schedule:
+  cron: "0 17 * * 5"  # Every Friday at 5 PM
+  timezone: "Asia/Taipei"
+
+logging:
+  level: "INFO"
+  file: "logs/app.log"
