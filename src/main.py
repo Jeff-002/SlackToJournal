@@ -104,6 +104,11 @@ async def generate_weekly_journal(
         from .journal.schemas import ExportOptions
         export_options = ExportOptions(upload_to_drive=upload_to_drive)
         
+        # If no Google credentials, disable Drive upload
+        if upload_to_drive and not settings.google_drive.credentials_file.exists():
+            click.echo("⚠️  Google credentials not found, saving locally instead...")
+            export_options.upload_to_drive = False
+        
         # Generate journal
         result = await journal_service.generate_weekly_journal(
             target_date=target_date,
@@ -132,6 +137,16 @@ async def generate_weekly_journal(
                     click.echo(f"  • ☁️  Uploaded to Google Drive: {drive_result['file_id']}")
                 else:
                     click.echo(f"  • ❌ Drive upload failed: {drive_result['error']}")
+            
+            # Show local file results
+            if result.export_results.get('local_file'):
+                local_result = result.export_results['local_file']
+                if local_result['success']:
+                    click.echo(f"  • 📁 Saved locally: {local_result['file_name']}")
+                    click.echo(f"  • 📍 File path: {local_result['file_path']}")
+                    click.echo(f"  • 📊 File size: {local_result['file_size']} bytes")
+                else:
+                    click.echo(f"  • ❌ Local save failed: {local_result['error']}")
             
             # Show content preview
             click.echo(f"\n📝 Content preview:")

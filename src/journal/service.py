@@ -155,20 +155,37 @@ class JournalService:
             if export_options is None:
                 export_options = ExportOptions()
             
+            # Try Google Drive upload, fallback to local file
             if export_options.upload_to_drive:
-                upload_result = await self.drive_service.upload_weekly_journal(
-                    journal_content=journal_entry.content,
-                    week_start_date=week_start,
-                    format_type="markdown"
-                )
-                export_results['drive_upload'] = {
-                    'success': upload_result.success,
-                    'file_id': upload_result.file.id if upload_result.file else None,
-                    'error': upload_result.error_message
-                }
-                
-                if upload_result.success:
-                    logger.info(f"Journal uploaded to Drive: {upload_result.file.web_view_link}")
+                try:
+                    upload_result = await self.drive_service.upload_weekly_journal(
+                        journal_content=journal_entry.content,
+                        week_start_date=week_start,
+                        format_type="markdown"
+                    )
+                    export_results['drive_upload'] = {
+                        'success': upload_result.success,
+                        'file_id': upload_result.file.id if upload_result.file else None,
+                        'error': upload_result.error_message
+                    }
+                    
+                    if upload_result.success:
+                        logger.info(f"Journal uploaded to Drive: {upload_result.file.web_view_link}")
+                    else:
+                        logger.warning(f"Drive upload failed: {upload_result.error_message}")
+                        # Fallback to local file
+                        local_file = self._save_journal_locally(journal_entry, week_start)
+                        export_results['local_file'] = local_file
+                        
+                except Exception as e:
+                    logger.warning(f"Drive service unavailable: {e}")
+                    # Fallback to local file
+                    local_file = self._save_journal_locally(journal_entry, week_start)
+                    export_results['local_file'] = local_file
+            else:
+                # Save locally by default
+                local_file = self._save_journal_locally(journal_entry, week_start)
+                export_results['local_file'] = local_file
             
             processing_time = time.time() - start_time
             
@@ -390,6 +407,58 @@ class JournalService:
         )
         
         return journal_entry
+    
+    def _save_journal_locally(
+        self, 
+        journal_entry: JournalEntry, 
+        week_start: datetime
+    ) -> Dict[str, Any]:
+        """
+        Save journal entry to local file.
+        
+        Args:
+            journal_entry: Journal entry to save
+            week_start: Week start date for filename
+            
+        Returns:
+            Dictionary with local file information
+        """
+        from pathlib import Path
+        
+        try:
+            # Create output directory
+            output_dir = Path("journals")
+            output_dir.mkdir(exist_ok=True)
+            
+            # Generate filename with date
+            week_end = week_start + timedelta(days=6)
+            filename = f"工作日誌_{week_start.strftime('%Y%m%d')}_{week_end.strftime('%Y%m%d')}.md"
+            file_path = output_dir / filename
+            
+            # Write journal content
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(journal_entry.content)
+            
+            # Update journal entry with file info
+            journal_entry.file_name = filename
+            journal_entry.file_path = str(file_path.absolute())
+            journal_entry.file_size = file_path.stat().st_size
+            
+            logger.info(f"Journal saved locally: {file_path}")
+            
+            return {
+                'success': True,
+                'file_path': str(file_path.absolute()),
+                'file_name': filename,
+                'file_size': file_path.stat().st_size
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to save journal locally: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
     
     async def get_recent_journals(self, days_back: int = 30) -> List[Dict[str, Any]]:
         """

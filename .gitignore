@@ -153,6 +153,10 @@ configs/credentials/*.pem
 logs/
 *.log
 
+# Generated journals
+journals/
+工作日誌_*.md
+
 # Cache directories
 .cache/
 
