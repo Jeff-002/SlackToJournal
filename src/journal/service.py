@@ -53,9 +53,10 @@ class JournalService:
     async def generate_weekly_journal(
         self,
         target_date: Optional[datetime] = None,
-        user_name: str = "Team Member",
         team_name: str = "Development Team",
-        export_options: Optional[ExportOptions] = None
+        export_options: Optional[ExportOptions] = None,
+        user_email: Optional[str] = None,
+        filter_user_name: Optional[str] = None
     ) -> ProcessingResult:
         """
         Generate a complete weekly work journal.
@@ -87,7 +88,9 @@ class JournalService:
             
             # Step 1: Extract Slack messages
             messages = await self.slack_service.get_weekly_work_messages(
-                target_date=target_date
+                target_date=target_date,
+                user_email=user_email,
+                user_name=filter_user_name
             )
             
             if not messages:
@@ -105,8 +108,8 @@ class JournalService:
             from ..ai_processing.schemas import PromptContext
             
             context = PromptContext(
-                user_name=user_name,
-                role="Team Member",
+                user_name=filter_user_name or "Team Member",
+                role="Team Member", 
                 team=team_name,
                 period_start=week_start,
                 period_end=week_end,
@@ -145,7 +148,7 @@ class JournalService:
                 ai_response=ai_response,
                 week_start=week_start,
                 week_end=week_end,
-                user_name=user_name,
+                user_name=filter_user_name or "Team Member",
                 team_name=team_name,
                 messages_count=len(messages)
             )
@@ -223,8 +226,9 @@ class JournalService:
     async def generate_daily_summary(
         self,
         target_date: Optional[datetime] = None,
-        user_name: str = "Team Member",
-        upload_to_drive: bool = True
+        upload_to_drive: bool = True,
+        user_email: Optional[str] = None,
+        filter_user_name: Optional[str] = None
     ) -> ProcessingResult:
         """
         Generate a daily work summary.
@@ -250,7 +254,7 @@ class JournalService:
             day_end = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
             
             # For now, get weekly messages and filter (in production, implement daily filtering)
-            weekly_messages = await self.slack_service.get_weekly_work_messages(target_date)
+            weekly_messages = await self.slack_service.get_weekly_work_messages(target_date, user_email=user_email, user_name=filter_user_name)
             
             # Filter messages for the specific day
             daily_messages = []
@@ -276,7 +280,7 @@ class JournalService:
             ai_response = await self.ai_service.generate_daily_summary(
                 messages=daily_messages,
                 date=target_date,
-                user_name=user_name
+                user_name=filter_user_name or "Team Member"
             )
             
             if not ai_response.success:
@@ -293,7 +297,7 @@ class JournalService:
                 journal_type=JournalType.DAILY,
                 period_start=day_start,
                 period_end=day_end,
-                author_name=user_name,
+                author_name=filter_user_name or "Team Member",
                 total_messages=len(daily_messages),
                 confidence_score=ai_response.confidence_score
             )

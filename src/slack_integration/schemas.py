@@ -107,6 +107,8 @@ class MessageFilter(BaseModel):
     
     channels: Optional[List[str]] = Field(default=None, description="Channel IDs to include")
     users: Optional[List[str]] = Field(default=None, description="User IDs to include")
+    user_emails: Optional[List[str]] = Field(default=None, description="User emails to include")
+    user_names: Optional[List[str]] = Field(default=None, description="User names/display names to include")
     start_date: Optional[datetime] = Field(default=None, description="Start date for messages")
     end_date: Optional[datetime] = Field(default=None, description="End date for messages")
     

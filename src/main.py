@@ -57,23 +57,25 @@ def cli(config: Optional[str], debug: bool):
 @cli.command()
 @click.option('--date', '-d', type=click.DateTime(formats=['%Y-%m-%d']), 
               help='Target week date (default: current week)')
-@click.option('--user', '-u', default='Team Member', help='User name')
+@click.option('--user-email', '-e', help='Filter messages by user email (if not provided, includes all users)')
+@click.option('--user-name', '-n', help='Filter messages by user name/display name (if not provided, includes all users)')
 @click.option('--team', '-t', default='Development Team', help='Team name')
 @click.option('--upload/--no-upload', default=True, help='Upload to Google Drive')
-def weekly(date: Optional[datetime], user: str, team: str, upload: bool):
+def weekly(date: Optional[datetime], user_email: Optional[str], user_name: Optional[str], team: str, upload: bool):
     """Generate weekly work journal."""
-    asyncio.run(generate_weekly_journal(date, user, team, upload))
+    asyncio.run(generate_weekly_journal(date, team, upload, user_email, user_name))
 
 
 @cli.command()
 @click.option('--date', '-d', type=click.DateTime(formats=['%Y-%m-%d']), 
               help='Target date (default: today)')
-@click.option('--user', '-u', default='Team Member', help='User name')
+@click.option('--user-email', '-e', help='Filter messages by user email (if not provided, includes all users)')
+@click.option('--user-name', '-n', help='Filter messages by user name/display name (if not provided, includes all users)')
 @click.option('--no-upload', is_flag=True, help='Skip Google Drive upload, save locally only')
-def daily(date: Optional[datetime], user: str, no_upload: bool):
+def daily(date: Optional[datetime], user_email: Optional[str], user_name: Optional[str], no_upload: bool):
     """Generate daily work summary."""
     upload = not no_upload
-    asyncio.run(generate_daily_summary(date, user, upload))
+    asyncio.run(generate_daily_summary(date, upload, user_email, user_name))
 
 
 @cli.command()
@@ -107,9 +109,10 @@ def test(test_slack: bool, test_ai: bool, test_drive: bool, test_all: bool):
 
 async def generate_weekly_journal(
     target_date: Optional[datetime],
-    user_name: str,
     team_name: str,
-    upload_to_drive: bool
+    upload_to_drive: bool,
+    user_email: Optional[str] = None,
+    filter_user_name: Optional[str] = None
 ):
     """Generate weekly work journal."""
     try:
@@ -130,9 +133,10 @@ async def generate_weekly_journal(
         # Generate journal
         result = await journal_service.generate_weekly_journal(
             target_date=target_date,
-            user_name=user_name,
             team_name=team_name,
-            export_options=export_options
+            export_options=export_options,
+            user_email=user_email,
+            filter_user_name=filter_user_name
         )
         
         if result.success:
@@ -181,7 +185,7 @@ async def generate_weekly_journal(
         sys.exit(1)
 
 
-async def generate_daily_summary(target_date: Optional[datetime], user_name: str, upload_to_drive: bool = True):
+async def generate_daily_summary(target_date: Optional[datetime], upload_to_drive: bool = True, user_email: Optional[str] = None, filter_user_name: Optional[str] = None):
     """Generate daily work summary."""
     try:
         click.echo("📅 Starting daily summary generation...")
@@ -195,8 +199,9 @@ async def generate_daily_summary(target_date: Optional[datetime], user_name: str
         # Generate summary
         result = await journal_service.generate_daily_summary(
             target_date=target_date,
-            user_name=user_name,
-            upload_to_drive=upload_to_drive
+            upload_to_drive=upload_to_drive,
+            user_email=user_email,
+            filter_user_name=filter_user_name
         )
         
         if result.success:

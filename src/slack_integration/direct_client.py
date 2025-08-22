@@ -95,7 +95,7 @@ class DirectSlackClient:
             logger.error(f"Authentication error: {e}")
             raise SlackIntegrationError(f"Authentication failed: {str(e)}")
     
-    async def get_channels(self, include_private: bool = False) -> List[SlackChannel]:
+    async def get_channels(self, include_private: bool = True) -> List[SlackChannel]:
         """Get list of channels."""
         if not self._authenticated:
             await self.authenticate()
@@ -106,25 +106,62 @@ class DirectSlackClient:
             cursor = None
             
             while True:
+                # Try with all types first, fall back if permissions are missing
+                channel_types = "public_channel"
+                if include_private:
+                    # Start with basic private channels
+                    channel_types = "public_channel,private_channel"
+                
                 response = await asyncio.get_event_loop().run_in_executor(
                     None, 
                     lambda: self.bot_client.conversations_list(
                         exclude_archived=True,
-                        types="public_channel" + (",private_channel" if include_private else ""),
+                        types=channel_types,
                         cursor=cursor,
                         limit=200
                     )
                 )
                 
                 if not response["ok"]:
-                    raise SlackIntegrationError(f"Failed to get channels: {response.get('error')}")
+                    error_msg = response.get('error', 'unknown_error')
+                    if error_msg == 'missing_scope':
+                        missing_scope = response.get('needed', 'unknown')
+                        logger.warning(f"Missing scope '{missing_scope}', falling back to public channels only")
+                        if include_private and channel_types != "public_channel":
+                            # Retry with public channels only
+                            logger.info("Retrying with public channels only due to insufficient permissions")
+                            response = await asyncio.get_event_loop().run_in_executor(
+                                None, 
+                                lambda: self.bot_client.conversations_list(
+                                    exclude_archived=True,
+                                    types="public_channel",
+                                    cursor=cursor,
+                                    limit=200
+                                )
+                            )
+                            if not response["ok"]:
+                                raise SlackIntegrationError(f"Failed to get channels: {response.get('error')}")
+                        else:
+                            raise SlackIntegrationError(f"Failed to get channels: {response.get('error')}")
+                    else:
+                        raise SlackIntegrationError(f"Failed to get channels: {error_msg}")
                 
                 for channel_data in response["channels"]:
+                    # Determine channel type
+                    if channel_data.get("is_im", False):
+                        channel_type = "im"
+                    elif channel_data.get("is_mpim", False):
+                        channel_type = "mpim"
+                    elif channel_data.get("is_private", False):
+                        channel_type = "private_channel"
+                    else:
+                        channel_type = "public_channel"
+                        
                     channel = SlackChannel(
                         id=channel_data["id"],
-                        name=channel_data["name"],
-                        type="private_channel" if channel_data.get("is_private") else "public_channel",
-                        is_private=channel_data.get("is_private", False),
+                        name=channel_data.get("name", f"Direct Message ({channel_data['id']})"),
+                        type=channel_type,
+                        is_private=channel_data.get("is_private", False) or channel_data.get("is_im", False) or channel_data.get("is_mpim", False),
                         is_archived=channel_data.get("is_archived", False),
                         topic=channel_data.get("topic", {}).get("value"),
                         purpose=channel_data.get("purpose", {}).get("value"),
@@ -174,6 +211,24 @@ class DirectSlackClient:
         """Get messages from a channel."""
         if not self._authenticated:
             await self.authenticate()
+        
+        # Convert user emails and names to user IDs if provided
+        target_user_ids = set()
+        if message_filter:
+            if message_filter.users:
+                target_user_ids.update(message_filter.users)
+            
+            if message_filter.user_emails:
+                logger.info(f"Looking up user IDs for emails: {message_filter.user_emails}")
+                found_user_ids = await self.find_users_by_email(message_filter.user_emails)
+                target_user_ids.update(found_user_ids)
+                logger.info(f"Found {len(found_user_ids)} matching users by email")
+            
+            if message_filter.user_names:
+                logger.info(f"Looking up user IDs for names: {message_filter.user_names}")
+                found_user_ids = await self.find_users_by_name(message_filter.user_names)
+                target_user_ids.update(found_user_ids)
+                logger.info(f"Found {len(found_user_ids)} matching users by name")
         
         try:
             messages = []
@@ -236,6 +291,12 @@ class DirectSlackClient:
                     # Skip bot messages if requested
                     if message_filter and not message_filter.include_bots:
                         if msg_data.get("bot_id") or msg_data.get("subtype") == "bot_message":
+                            continue
+                    
+                    # Filter by user if specified
+                    if target_user_ids:
+                        message_user = msg_data.get("user")
+                        if not message_user or message_user not in target_user_ids:
                             continue
                     
                     # Skip very short messages
@@ -301,6 +362,90 @@ class DirectSlackClient:
         except SlackApiError as e:
             logger.warning(f"Failed to get user info: {e}")
             return None
+    
+    async def find_users_by_name(self, user_names: List[str]) -> List[str]:
+        """Find user IDs by their display names or real names."""
+        if not self._authenticated:
+            await self.authenticate()
+        
+        try:
+            response = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: self.bot_client.users_list()
+            )
+            
+            if not response["ok"]:
+                logger.warning(f"Failed to get users list: {response.get('error')}")
+                return []
+            
+            matched_user_ids = []
+            
+            # Normalize target names for case-insensitive matching
+            target_names = [name.lower().strip() for name in user_names]
+            
+            for user_data in response["members"]:
+                if user_data.get("is_bot", False) or user_data.get("deleted", False):
+                    continue
+                
+                # Check display name, real name, and username
+                user_display_name = user_data.get("name", "").lower()
+                user_real_name = user_data.get("real_name", "").lower()
+                user_profile_name = user_data.get("profile", {}).get("display_name", "").lower()
+                
+                # Match against any of the user identifiers
+                for target_name in target_names:
+                    if (target_name in user_display_name or 
+                        target_name in user_real_name or 
+                        target_name in user_profile_name or
+                        user_display_name == target_name or
+                        user_real_name == target_name or
+                        user_profile_name == target_name):
+                        matched_user_ids.append(user_data["id"])
+                        user_name = user_data.get("real_name") or user_data.get("name", "Unknown")
+                        logger.info(f"Found user: {user_name} ({user_data['id']}) for name '{target_name}'")
+                        break
+            
+            return matched_user_ids
+            
+        except SlackApiError as e:
+            logger.warning(f"Failed to search users: {e}")
+            return []
+
+    async def find_users_by_email(self, user_emails: List[str]) -> List[str]:
+        """Find user IDs by their email addresses."""
+        if not self._authenticated:
+            await self.authenticate()
+        
+        try:
+            response = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: self.bot_client.users_list()
+            )
+            
+            if not response["ok"]:
+                logger.warning(f"Failed to get users list: {response.get('error')}")
+                return []
+            
+            matched_user_ids = []
+            
+            # Normalize target emails for case-insensitive matching
+            target_emails = [email.lower().strip() for email in user_emails]
+            
+            for user_data in response["members"]:
+                if user_data.get("is_bot", False) or user_data.get("deleted", False):
+                    continue
+                
+                # Check email in profile
+                user_email = user_data.get("profile", {}).get("email", "").lower()
+                
+                if user_email and user_email in target_emails:
+                    matched_user_ids.append(user_data["id"])
+                    user_name = user_data.get("real_name") or user_data.get("name", "Unknown")
+                    logger.info(f"Found user: {user_name} ({user_data['id']}) for email '{user_email}'")
+            
+            return matched_user_ids
+            
+        except SlackApiError as e:
+            logger.warning(f"Failed to search users: {e}")
+            return []
     
     async def search_messages(
         self,

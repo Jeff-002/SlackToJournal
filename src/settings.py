@@ -29,6 +29,10 @@ class SlackSettings(BaseSettings):
         default=None,
         description="Specific channel names to monitor (comma-separated)"
     )
+    exclude_keywords: Optional[List[str]] = Field(
+        default=["sync"],
+        description="Keywords to exclude from messages (case-insensitive, comma-separated)"
+    )
     
     @field_validator('target_channels', mode='before')
     @classmethod
@@ -37,6 +41,16 @@ class SlackSettings(BaseSettings):
         if isinstance(v, str) and v.strip():
             return [ch.strip() for ch in v.split(',') if ch.strip()]
         return v
+    
+    @field_validator('exclude_keywords', mode='before')
+    @classmethod
+    def parse_exclude_keywords(cls, v):
+        """Parse comma-separated exclude keywords from environment variable."""
+        if isinstance(v, str) and v.strip():
+            return [kw.strip().lower() for kw in v.split(',') if kw.strip()]
+        elif isinstance(v, list):
+            return [kw.lower() if isinstance(kw, str) else str(kw).lower() for kw in v]
+        return v or ["sync"]
     
     model_config = SettingsConfigDict(env_prefix="SLACK_")
 

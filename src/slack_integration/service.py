@@ -298,6 +298,14 @@ class SlackService:
         if len(text) < 10:
             return False
         
+        # Skip messages containing excluded keywords
+        if hasattr(self, 'settings') and self.settings.exclude_keywords:
+            text_lower = text.lower()
+            for keyword in self.settings.exclude_keywords:
+                if keyword in text_lower:
+                    logger.debug(f"Skipping message with excluded keyword '{keyword}': {text[:50]}...")
+                    return False
+        
         # Use utility function for detailed analysis
         return is_work_related_message(text)
     

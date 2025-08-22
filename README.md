@@ -16,9 +16,15 @@ AI驅動的自動化工具，讀取Slack工作區內容並使用直接Slack API�
 ### 前置條件
 
 1. **Slack Bot Token**：建立Slack應用程式並取得具備以下權限的bot token：
-   - `channels:history` - 讀取頻道訊息
-   - `channels:read` - 列出頻道
+   - `channels:history` - 讀取公開頻道訊息
+   - `channels:read` - 列出公開頻道
    - `channels:join` - 自動加入頻道
+   - `groups:history` - 讀取私人頻道訊息 ⚠️ **重要**
+   - `groups:read` - 列出私人頻道 ⚠️ **重要**
+   - `mpim:history` - 讀取多人私訊群組訊息
+   - `mpim:read` - 列出多人私訊群組 ⚠️ **重要**
+   - `im:history` - 讀取私人訊息
+   - `im:read` - 列出私人訊息
    - `users:read` - 取得使用者資訊
 
 2. **Gemini API Key**：從[Google AI Studio](https://makersuite.google.com/app/apikey)取得
@@ -39,6 +45,9 @@ AI驅動的自動化工具，讀取Slack工作區內容並使用直接Slack API�
    SLACK_BOT_TOKEN=xoxb-your-bot-token-here
    SLACK_USER_TOKEN=xoxp-your-user-token-here  # 可選
    SLACK_WORKSPACE_ID=your-workspace-id
+   
+   # 訊息過濾
+   SLACK_EXCLUDE_KEYWORDS=sync,test,debug  # 排除關鍵字（逗號分隔）
 
    # AI 處理
    GEMINI_API_KEY=your-gemini-api-key
@@ -67,14 +76,20 @@ AI驅動的自動化工具，讀取Slack工作區內容並使用直接Slack API�
 
 **生成每日摘要**：
 ```bash
-python -m src.main daily                    # 預設上傳到Google Drive
-python -m src.main daily --no-upload        # 僅本地儲存
+python -m src.main daily                              # 所有使用者，預設上傳到Google Drive
+python -m src.main daily --no-upload                  # 所有使用者，僅本地儲存
+python -m src.main daily -e user@company.com          # 特定使用者email
+python -m src.main daily -n "張三"                    # 特定使用者名稱
+python -m src.main daily -n "張三" -e user@company.com # 指定使用者名稱和email
 ```
 
 **生成週報**：
 ```bash
-python -m src.main weekly --no-upload       # 僅本地儲存
-python -m src.main weekly                   # 上傳到Google Drive
+python -m src.main weekly --no-upload                 # 所有使用者，僅本地儲存
+python -m src.main weekly                             # 所有使用者，上傳到Google Drive
+python -m src.main weekly -e user@company.com         # 特定使用者email的週報
+python -m src.main weekly -n "團隊"                   # 特定使用者名稱的週報
+python -m src.main weekly -n "團隊" -e user@company.com # 指定使用者名稱和email
 ```
 
 **檢查系統狀態**：
@@ -87,6 +102,21 @@ python -m src.main status
 python -m src.main recent --days 30
 ```
 
+### 使用者過濾參數說明
+
+**`-e, --user-email`**：根據使用者email過濾訊息
+- 格式：`user@company.com`
+- 完全匹配使用者的Slack註冊email
+
+**`-n, --user-name`**：根據使用者名稱過濾訊息
+- 格式：支援顯示名稱、真實姓名或使用者名稱
+- 不區分大小寫匹配
+- 支援中英文及Unicode字元
+- 範例：`"張三"`、`"Han_張麗華"`、`"John Smith"`
+
+**組合使用**：可同時使用 `-e` 和 `-n` 參數進行更精確的過濾
+```
+
 ## 系統架構
 
 - `src/slack_integration/` - 直接Slack API客戶端，具備自動加入頻道功能
@@ -96,6 +126,41 @@ python -m src.main recent --days 30
 - `src/core/` - 共用工具、日誌記錄和設定
 
 ## 疑難排解
+
+### 私人頻道訊息讀取問題
+
+如果bot無法讀取私人頻道訊息：
+
+1. **檢查Bot權限**：確保在Slack App設定中已啟用以下OAuth Scopes：
+   ```
+   groups:history, groups:read, mpim:history, mpim:read, im:history, im:read
+   ```
+   
+   **常見錯誤**：
+   - `missing_scope: mpim:read` - 需要添加多人私訊群組列表權限
+   - `missing_scope: groups:read` - 需要添加私人頻道列表權限
+   - `missing_scope: im:read` - 需要添加私人訊息列表權限
+
+2. **重新安裝App**：修改權限後需要重新安裝到工作區：
+   - 前往 Slack App 設定頁面
+   - 點選 "Install to Workspace" 重新安裝
+   - 重新授權新的權限
+
+3. **確認Bot已加入私人頻道**：
+   - 在私人頻道中輸入 `/invite @你的bot名稱`
+   - 或者在頻道設定中手動添加bot
+
+4. **測試權限**：
+   ```bash
+   python -m src.main status
+   ```
+
+5. **查看詳細日誌**：
+   ```bash
+   # 啟用DEBUG模式
+   export LOG_LEVEL=DEBUG
+   python -m src.main daily
+   ```
 
 ### SSL憑證問題
 如果在企業環境中遇到SSL憑證錯誤：

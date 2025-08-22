@@ -11,6 +11,7 @@ import re
 
 from ..core.logging import get_logger
 from ..core.exceptions import SlackIntegrationError, ValidationError
+from ..settings import SlackSettings
 from .direct_client import DirectSlackClient
 from .schemas import SlackMessage, MessageFilter
 from .utils import is_work_related_message, clean_message_text
@@ -27,26 +28,32 @@ class DirectSlackService:
     but with simpler setup using Slack bot tokens.
     """
     
-    def __init__(self, bot_token: str, user_token: Optional[str] = None, target_channels: Optional[List[str]] = None) -> None:
+    def __init__(self, bot_token: str, user_token: Optional[str] = None, settings: Optional[SlackSettings] = None) -> None:
         """
         Initialize Direct Slack service.
         
         Args:
             bot_token: Slack bot token (xoxb-)
             user_token: Optional user token (xoxp-)
-            target_channels: Specific channel names to monitor (if None, auto-detect)
+            settings: Slack settings including target channels and exclude keywords
         """
         self.client = DirectSlackClient(bot_token, user_token)
-        self.target_channels = target_channels
-        if target_channels:
-            logger.info(f"Initialized Direct Slack service with target channels: {', '.join(target_channels)}")
+        self.settings = settings
+        self.target_channels = settings.target_channels if settings else None
+        if self.target_channels:
+            logger.info(f"Initialized Direct Slack service with target channels: {', '.join(self.target_channels)}")
         else:
             logger.info("Initialized Direct Slack service with auto-detect channels")
+            
+        if self.settings and self.settings.exclude_keywords:
+            logger.info(f"Excluding messages with keywords: {', '.join(self.settings.exclude_keywords)}")
     
     async def get_weekly_work_messages(
         self,
         target_date: Optional[datetime] = None,
-        work_channels: Optional[List[str]] = None
+        work_channels: Optional[List[str]] = None,
+        user_email: Optional[str] = None,
+        user_name: Optional[str] = None
     ) -> List[SlackMessage]:
         """
         Get work-related messages from the current or specified week.
@@ -54,6 +61,8 @@ class DirectSlackService:
         Args:
             target_date: Target date for week calculation (defaults to now)
             work_channels: List of channel IDs to search (defaults to all accessible channels)
+            user_email: Filter messages by specific user email (if provided)
+            user_name: Filter messages by specific user name (if provided)
             
         Returns:
             List of work-related messages from the week
@@ -83,7 +92,9 @@ class DirectSlackService:
             end_date=week_end,
             include_bots=False,
             include_threads=True,
-            min_length=5
+            min_length=5,
+            user_emails=[user_email] if user_email else None,
+            user_names=[user_name] if user_name else None
         )
         
         # Retrieve messages from all channels
@@ -221,7 +232,7 @@ class DirectSlackService:
     
     async def _get_work_channels(self) -> List[str]:
         """Get list of work-related channel IDs."""
-        channels = await self.client.get_channels(include_private=False)
+        channels = await self.client.get_channels(include_private=True)
         
         # If specific target channels are configured, use them
         if self.target_channels:
@@ -297,6 +308,14 @@ class DirectSlackService:
         # Skip very short messages
         if len(text) < 5:
             return False
+        
+        # Skip messages containing excluded keywords
+        if hasattr(self, 'settings') and self.settings.exclude_keywords:
+            text_lower = text.lower()
+            for keyword in self.settings.exclude_keywords:
+                if keyword in text_lower:
+                    logger.debug(f"Skipping message with excluded keyword '{keyword}': {text[:50]}...")
+                    return False
         
         # Use utility function for detailed analysis
         return is_work_related_message(text)

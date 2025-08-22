@@ -48,7 +48,7 @@ class SlackAdapter:
         
         if bot_token:
             logger.info("Using direct Slack API integration")
-            self.service = DirectSlackService(bot_token, user_token, settings.target_channels)
+            self.service = DirectSlackService(bot_token, user_token, settings)
             self.integration_type = "direct"
         else:
             logger.info("Using MCP-based Slack integration")
@@ -58,10 +58,20 @@ class SlackAdapter:
     async def get_weekly_work_messages(
         self,
         target_date: Optional[datetime] = None,
-        work_channels: Optional[List[str]] = None
+        work_channels: Optional[List[str]] = None,
+        user_email: Optional[str] = None,
+        user_name: Optional[str] = None
     ) -> List[SlackMessage]:
         """Get weekly work messages using available integration."""
-        return await self.service.get_weekly_work_messages(target_date, work_channels)
+        if hasattr(self.service, 'get_weekly_work_messages'):
+            # Check if the service supports user filtering parameters
+            if self.integration_type == "direct":
+                return await self.service.get_weekly_work_messages(target_date, work_channels, user_email, user_name)
+            else:
+                # MCP service doesn't support user filtering yet
+                return await self.service.get_weekly_work_messages(target_date, work_channels)
+        else:
+            raise NotImplementedError("Service doesn't implement get_weekly_work_messages")
     
     async def get_channel_work_summary(
         self,
