@@ -11,6 +11,7 @@ from typing import Optional, List
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import yaml
+from dotenv import load_dotenv
 
 
 class SlackSettings(BaseSettings):
@@ -24,6 +25,18 @@ class SlackSettings(BaseSettings):
         default="",
         description="Slack workspace ID"
     )
+    target_channels: Optional[List[str]] = Field(
+        default=None,
+        description="Specific channel names to monitor (comma-separated)"
+    )
+    
+    @field_validator('target_channels', mode='before')
+    @classmethod
+    def parse_target_channels(cls, v):
+        """Parse comma-separated channel names from environment variable."""
+        if isinstance(v, str) and v.strip():
+            return [ch.strip() for ch in v.split(',') if ch.strip()]
+        return v
     
     model_config = SettingsConfigDict(env_prefix="SLACK_")
 
@@ -190,11 +203,15 @@ def load_settings(
     Returns:
         Configured AppSettings instance
     """
-    # Start with defaults and environment variables
+    # Load .env file explicitly
     if env_file and env_file.exists():
-        settings = AppSettings(_env_file=str(env_file))
+        load_dotenv(env_file)
     else:
-        settings = AppSettings()
+        # Try to load from default .env location
+        load_dotenv()
+    
+    # Start with defaults and environment variables
+    settings = AppSettings()
     
     # Override with YAML configuration if provided
     if yaml_path and yaml_path.exists():

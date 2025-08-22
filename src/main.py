@@ -7,15 +7,31 @@ for generating work journals from Slack messages.
 
 import asyncio
 import sys
+import ssl
+import io
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 import click
 
-from .core.logging import setup_logging, get_logger
-from .core.exceptions import SlackToJournalError
-from .settings import get_settings
-from .journal.service import JournalService
+# Fix SSL and encoding issues for Windows
+try:
+    ssl._create_default_https_context = ssl._create_unverified_context
+except:
+    pass
+
+# Fix encoding for Windows console
+try:
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+except:
+    pass
+
+from src.core.logging import setup_logging, get_logger
+from src.core.exceptions import SlackToJournalError
+from src.settings import get_settings
+from src.journal.service import JournalService
 
 
 # Setup logging
@@ -53,9 +69,11 @@ def weekly(date: Optional[datetime], user: str, team: str, upload: bool):
 @click.option('--date', '-d', type=click.DateTime(formats=['%Y-%m-%d']), 
               help='Target date (default: today)')
 @click.option('--user', '-u', default='Team Member', help='User name')
-def daily(date: Optional[datetime], user: str):
+@click.option('--no-upload', is_flag=True, help='Skip Google Drive upload, save locally only')
+def daily(date: Optional[datetime], user: str, no_upload: bool):
     """Generate daily work summary."""
-    asyncio.run(generate_daily_summary(date, user))
+    upload = not no_upload
+    asyncio.run(generate_daily_summary(date, user, upload))
 
 
 @cli.command()
@@ -101,7 +119,7 @@ async def generate_weekly_journal(
         journal_service = JournalService(settings)
         
         # Set up export options
-        from .journal.schemas import ExportOptions
+        from src.journal.schemas import ExportOptions
         export_options = ExportOptions(upload_to_drive=upload_to_drive)
         
         # If no Google credentials, disable Drive upload
@@ -163,7 +181,7 @@ async def generate_weekly_journal(
         sys.exit(1)
 
 
-async def generate_daily_summary(target_date: Optional[datetime], user_name: str):
+async def generate_daily_summary(target_date: Optional[datetime], user_name: str, upload_to_drive: bool = True):
     """Generate daily work summary."""
     try:
         click.echo("📅 Starting daily summary generation...")
@@ -177,7 +195,8 @@ async def generate_daily_summary(target_date: Optional[datetime], user_name: str
         # Generate summary
         result = await journal_service.generate_daily_summary(
             target_date=target_date,
-            user_name=user_name
+            user_name=user_name,
+            upload_to_drive=upload_to_drive
         )
         
         if result.success:
@@ -188,6 +207,24 @@ async def generate_daily_summary(target_date: Optional[datetime], user_name: str
             click.echo(f"  • Messages processed: {result.messages_processed}")
             click.echo(f"  • Quality score: {journal.metadata.confidence_score:.1%}")
             click.echo(f"  • Processing time: {result.processing_time:.2f}s")
+            
+            # Show export results
+            if result.export_results.get('drive_upload'):
+                drive_result = result.export_results['drive_upload']
+                if drive_result['success']:
+                    click.echo(f"  • ☁️  Uploaded to Google Drive")
+                else:
+                    click.echo(f"  • ❌ Drive upload failed: {drive_result['error']}")
+            
+            # Show local file results
+            if result.export_results.get('local_file'):
+                local_result = result.export_results['local_file']
+                if local_result['success']:
+                    click.echo(f"  • 📁 Saved locally: {local_result['file_name']}")
+                    click.echo(f"  • 📍 File path: {local_result['file_path']}")
+                    click.echo(f"  • 📊 File size: {local_result['file_size']} bytes")
+                else:
+                    click.echo(f"  • ❌ Local save failed: {local_result['error']}")
             
             # Show content
             click.echo(f"\n📝 Daily Summary:")
@@ -349,7 +386,7 @@ async def run_tests(test_slack: bool, test_ai: bool, test_drive: bool, test_all:
     if test_ai:
         click.echo("\n🤖 Testing AI processing...")
         try:
-            from .ai_processing.service import AIProcessingService
+            from src.ai_processing.service import AIProcessingService
             ai_service = AIProcessingService(settings.gemini)
             
             # Simple test with dummy data
@@ -362,7 +399,7 @@ async def run_tests(test_slack: bool, test_ai: bool, test_drive: bool, test_all:
                 }
             ]
             
-            from .ai_processing.schemas import PromptContext
+            from src.ai_processing.schemas import PromptContext
             context = PromptContext(
                 user_name="Test User",
                 period_start=datetime.now() - timedelta(days=7),
@@ -383,7 +420,7 @@ async def run_tests(test_slack: bool, test_ai: bool, test_drive: bool, test_all:
     if test_drive:
         click.echo("\n☁️  Testing Google Drive...")
         try:
-            from .drive_integration.auth import DriveAuthenticator
+            from src.drive_integration.auth import DriveAuthenticator
             auth = DriveAuthenticator(settings.google_drive)
             
             # Test authentication
@@ -402,7 +439,7 @@ async def run_tests(test_slack: bool, test_ai: bool, test_drive: bool, test_all:
     if test_slack:
         click.echo("\n💬 Testing Slack connectivity...")
         try:
-            from .slack_integration.client import SlackMCPClient
+            from src.slack_integration.client import SlackMCPClient
             slack_client = SlackMCPClient(settings.slack)
             
             # Simple connectivity test

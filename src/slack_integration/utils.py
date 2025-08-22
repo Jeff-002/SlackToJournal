@@ -98,6 +98,7 @@ def is_work_related_message(text: str) -> bool:
         # Development terms
         'code', 'repository', 'commit', 'merge', 'pull request', 'pr', 'branch',
         'deploy', 'deployment', 'release', 'version', 'build', 'test', 'testing',
+        'bug', 'fix', 'patch', '修改', '實作', '開發', '測試', '上線', '部署',
         
         # Meeting and collaboration
         'meeting', 'discussion', 'decision', 'review', 'feedback', 'approval',
@@ -176,7 +177,7 @@ def is_work_related_message(text: str) -> bool:
     
     logger.debug(f"Work analysis - Score: {final_score}, Text: {text[:50]}...")
     
-    return final_score >= 2
+    return final_score >= 1
 
 
 def extract_action_items(text: str) -> List[str]:

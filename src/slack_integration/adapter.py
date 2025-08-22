@@ -41,9 +41,14 @@ class SlackAdapter:
         bot_token = os.getenv('SLACK_BOT_TOKEN')
         user_token = os.getenv('SLACK_USER_TOKEN')  # Optional
         
+        # Debug logging
+        logger.info(f"SLACK_BOT_TOKEN present: {bool(bot_token)}")
+        if bot_token:
+            logger.info(f"Bot token starts with: {bot_token[:10]}...")
+        
         if bot_token:
             logger.info("Using direct Slack API integration")
-            self.service = DirectSlackService(bot_token, user_token)
+            self.service = DirectSlackService(bot_token, user_token, settings.target_channels)
             self.integration_type = "direct"
         else:
             logger.info("Using MCP-based Slack integration")

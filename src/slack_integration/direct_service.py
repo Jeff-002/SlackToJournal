@@ -27,16 +27,21 @@ class DirectSlackService:
     but with simpler setup using Slack bot tokens.
     """
     
-    def __init__(self, bot_token: str, user_token: Optional[str] = None) -> None:
+    def __init__(self, bot_token: str, user_token: Optional[str] = None, target_channels: Optional[List[str]] = None) -> None:
         """
         Initialize Direct Slack service.
         
         Args:
             bot_token: Slack bot token (xoxb-)
             user_token: Optional user token (xoxp-)
+            target_channels: Specific channel names to monitor (if None, auto-detect)
         """
         self.client = DirectSlackClient(bot_token, user_token)
-        logger.info("Initialized Direct Slack service")
+        self.target_channels = target_channels
+        if target_channels:
+            logger.info(f"Initialized Direct Slack service with target channels: {', '.join(target_channels)}")
+        else:
+            logger.info("Initialized Direct Slack service with auto-detect channels")
     
     async def get_weekly_work_messages(
         self,
@@ -56,10 +61,11 @@ class DirectSlackService:
         if target_date is None:
             target_date = datetime.now()
         
-        # Calculate week boundaries (Monday to Sunday)
+        # Calculate work week boundaries (Monday to Friday only)
         week_start = target_date - timedelta(days=target_date.weekday())
         week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
-        week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
+        # Only include Monday to Friday (4 days after Monday)
+        week_end = week_start + timedelta(days=4, hours=23, minutes=59, seconds=59)
         
         logger.info(f"Retrieving work messages for week: {week_start.date()} to {week_end.date()}")
         
@@ -77,7 +83,7 @@ class DirectSlackService:
             end_date=week_end,
             include_bots=False,
             include_threads=True,
-            min_length=10
+            min_length=5
         )
         
         # Retrieve messages from all channels
@@ -217,11 +223,30 @@ class DirectSlackService:
         """Get list of work-related channel IDs."""
         channels = await self.client.get_channels(include_private=False)
         
+        # If specific target channels are configured, use them
+        if self.target_channels:
+            work_channels = []
+            for channel in channels:
+                if channel.name in self.target_channels:
+                    work_channels.append(channel.id)
+                    logger.info(f"✅ Found target channel: {channel.name} ({channel.id})")
+            
+            # Check if all target channels were found
+            found_names = [ch.name for ch in channels if ch.id in work_channels]
+            missing_channels = set(self.target_channels) - set(found_names)
+            if missing_channels:
+                logger.warning(f"⚠️ Target channels not found: {', '.join(missing_channels)}")
+            
+            logger.info(f"Using {len(work_channels)} specified target channels")
+            return work_channels
+        
+        # If no target channels specified, use auto-detection
         # Filter for work-related channels (exclude social/random channels)
         exclude_patterns = [
             r'^(general|random|social|lunch|coffee|music|games?)$',
             r'^(announce|announcement)s?$',
-            r'^(water.?cooler|chat|casual)$'
+            r'^(water.?cooler|chat|casual)$',
+            r'^(社交|閒聊|聊天|音樂|遊戲)$'  # Chinese social channel names
         ]
         
         work_channels = []
@@ -237,8 +262,11 @@ class DirectSlackService:
             
             if not is_excluded:
                 work_channels.append(channel.id)
+                logger.info(f"✅ Auto-detected work channel: {channel.name} ({channel.id})")
+            else:
+                logger.info(f"❌ Excluded channel: {channel.name}")
         
-        logger.info(f"Identified {len(work_channels)} work-related channels")
+        logger.info(f"Auto-detected {len(work_channels)} work-related channels")
         return work_channels
     
     def _filter_work_messages(self, messages: List[SlackMessage]) -> List[SlackMessage]:
@@ -267,7 +295,7 @@ class DirectSlackService:
         text = clean_message_text(message.text)
         
         # Skip very short messages
-        if len(text) < 10:
+        if len(text) < 5:
             return False
         
         # Use utility function for detailed analysis

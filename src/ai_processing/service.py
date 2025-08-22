@@ -84,7 +84,7 @@ class AIProcessingService:
                 temperature=self.settings.temperature,
                 max_tokens=self.settings.max_tokens,
                 task_type="weekly_journal_generation",
-                output_format="json",
+                output_format="text",
                 group_by_project=True,
                 extract_action_items=True
             )
@@ -144,7 +144,7 @@ class AIProcessingService:
                 temperature=self.settings.temperature,
                 max_tokens=4096,
                 task_type="daily_summary",
-                output_format="json"
+                output_format="text"
             )
             
             # Process

@@ -268,8 +268,9 @@ Respond in JSON format:
         Returns:
             Formatted prompt string
         """
-        # This would normally use the PromptBuilder from prompts.py
-        # For now, create a basic prompt
+        # Use the new simplified prompt from prompts.py
+        from .prompts import JournalPrompts
+        from datetime import datetime, timedelta
         
         messages_text = ""
         for i, msg in enumerate(request.messages[:50], 1):
@@ -280,33 +281,27 @@ Respond in JSON format:
             
             messages_text += f"[{i}] {timestamp} - {user} in #{channel}:\n{text}\n\n"
         
-        base_prompt = f"""
-Analyze the following Slack messages and extract work-related content.
-
-**Task**: Extract and structure work-related activities, achievements, and insights.
-
-**Messages**:
-{messages_text}
-
-**Output Requirements**:
-- JSON format only
-- Include confidence scores (0.0-1.0)
-- Categorize work items
-- Identify projects and achievements
-- Extract action items
-- Use Traditional Chinese for descriptions
-
-Provide structured analysis focusing on:
-1. Work items and tasks
-2. Project progress
-3. Key achievements
-4. Challenges faced
-5. Action items for follow-up
-
-Response must be valid JSON format.
-"""
+        now = datetime.now()
         
-        return base_prompt
+        # Use different prompts based on task type
+        if request.task_type == "daily_summary":
+            # Use daily summary prompt
+            prompt = JournalPrompts.DAILY_SUMMARY_PROMPT.render(
+                date=now.strftime('%Y-%m-%d'),
+                user_name="Team Member",
+                messages_content=messages_text
+            )
+        else:
+            # Use work analysis prompt for weekly and other tasks
+            week_start = now - timedelta(days=7)
+            prompt = JournalPrompts.WORK_ANALYSIS_PROMPT.render(
+                period_start=week_start.strftime('%Y-%m-%d'),
+                period_end=now.strftime('%Y-%m-%d'),
+                user_name="Team Member",
+                messages_content=messages_text
+            )
+        
+        return prompt
     
     def _parse_journal_structure(self, parsed_response: Dict[str, Any]) -> Optional[Any]:
         """

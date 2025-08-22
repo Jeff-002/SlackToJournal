@@ -9,7 +9,13 @@
       "Bash(mkdir:*)",
       "Bash(touch:*)",
       "Bash(uv sync:*)",
-      "Bash(uv run:*)"
+      "Bash(uv run:*)",
+      "Bash(python:*)",
+      "Bash(uv:*)",
+      "Bash(set PYTHONIOENCODING=utf-8)",
+      "Bash(chcp:*)",
+      "Bash(powershell:*)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []

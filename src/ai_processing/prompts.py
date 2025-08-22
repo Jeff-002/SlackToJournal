@@ -59,98 +59,83 @@ class JournalPrompts:
     """Collection of journal-specific prompts."""
     
     WORK_ANALYSIS_PROMPT = PromptTemplate("""
-你是一個專業的工作日誌分析師，專門分析 Slack 對話並提取工作相關內容。
+你是一個專業的工作日誌分析師，專門從 Slack 對話中提取簡潔的工作內容摘要。
 
-**任務**: 分析以下 Slack 訊息，識別並結構化工作相關內容。
+**重要**: 請仔細檢查輸入的訊息內容。如果沒有提供真實的 Slack 訊息，或訊息為空、無效，請回報沒有內容可分析。
+
+**任務**: 分析以下 Slack 訊息，提取工作相關內容並以簡潔條列方式呈現。
 
 **時間範圍**: $period_start 到 $period_end
-**分析對象**: $user_name ($role)
-**團隊**: $team
+**分析對象**: $user_name
 
 **輸入訊息**:
 $messages_content
 
 **分析要求**:
-1. 識別所有工作相關的活動和任務
-2. 按專案分組相關工作內容
-3. 提取關鍵成就、挑戰和學習
-4. 識別需要後續行動的項目
-5. 分析工作模式和趨勢
+1. 只提取實際存在的工作活動和任務討論
+2. 忽略閒聊、打招呼等非工作內容
+3. 每個條目格式：MM/DD 簡潔工作描述
+4. 基於真實對話內容，絕對不要編造
 
-**輸出格式**: 請以以下JSON格式回應：
+**輸出格式**: 請以以下格式回應，每行一個工作項目：
 
-```json
-{
-  "period": "$period_start 到 $period_end",
-  "executive_summary": "整週工作的高層次摘要",
-  "key_highlights": ["重點成就1", "重點成就2"],
-  "projects": [
-    {
-      "project_name": "專案名稱",
-      "work_items": [
-        {
-          "title": "工作項目標題",
-          "description": "詳細描述",
-          "category": "development|project_management|meeting|decision|documentation|support|collaboration|planning|review|general",
-          "priority": "high|medium|low",
-          "status": "completed|in_progress|planned|blocked|cancelled",
-          "participants": ["參與者1", "參與者2"],
-          "confidence_score": 0.9
-        }
-      ],
-      "key_achievements": ["成就1", "成就2"],
-      "challenges": ["挑戰1", "挑戰2"],
-      "next_steps": ["下一步1", "下一步2"]
-    }
-  ],
-  "action_items": [
-    {
-      "title": "需要跟進的事項",
-      "description": "詳細說明",
-      "category": "相關分類",
-      "priority": "優先級",
-      "status": "planned",
-      "confidence_score": 0.8
-    }
-  ],
-  "learnings": ["學習點1", "學習點2"],
-  "challenges": ["遇到的挑戰1", "遇到的挑戰2"],
-  "metrics": {
-    "total_messages_analyzed": 數字,
-    "projects_involved": 數字,
-    "meetings_attended": 數字,
-    "decisions_made": 數字
-  }
-}
+```
+MM/DD 工作項目描述
+MM/DD 工作項目描述
+MM/DD 工作項目描述
 ```
 
-**重要指示**:
-- 只分析工作相關內容，排除社交閒聊
-- 使用繁體中文回應
-- 為每個工作項目提供信心分數 (0.0-1.0)
-- 合併相關的討論主題
-- 注重實際產出和成果
+**範例格式**:
+```
+8/21 實作Slack讀取工作內容
+8/21 修改S2列表Bug上測試機
+8/22 實作Slack工作日誌總結專案
+```
+
+**如果沒有有效訊息內容，請回報**: 
+```
+本週期沒有發現工作相關內容
+```
 """)
     
     DAILY_SUMMARY_PROMPT = PromptTemplate("""
-分析以下單日的工作訊息，生成每日工作摘要。
+你是一個專業的工作日誌分析師，專門從 Slack 對話中提取簡潔的每日工作內容摘要。
+
+**重要**: 請仔細檢查輸入的訊息內容。如果沒有提供真實的 Slack 訊息，或訊息為空、無效，請回報沒有內容可分析。
+
+**任務**: 分析以下 Slack 訊息，提取工作相關內容並以簡潔條列方式呈現。
 
 **日期**: $date
-**使用者**: $user_name
+**分析對象**: $user_name
 
-**訊息內容**:
+**輸入訊息**:
 $messages_content
 
-**請提供以下結構化分析**:
-1. **今日重點工作** (3-5個關鍵活動)
-2. **完成的任務** (具體完成項目)
-3. **進行中的工作** (尚未完成但有進展)
-4. **遇到的挑戰** (問題和阻礙)
-5. **明日計劃** (從討論中推斷的下一步)
-6. **重要決定** (做出的決策)
-7. **協作互動** (與他人的重要協作)
+**分析要求**:
+1. 只提取實際存在的工作活動和任務討論
+2. 忽略閒聊、打招呼等非工作內容
+3. 每個條目格式：MM/DD 簡潔工作描述
+4. 基於真實對話內容，絕對不要編造
 
-以JSON格式回應，包含信心分數。
+**輸出格式**: 請以以下格式回應，每行一個工作項目：
+
+```
+MM/DD 工作項目描述
+MM/DD 工作項目描述
+MM/DD 工作項目描述
+```
+
+**範例格式**:
+```
+8/22 實作Slack工作日誌總結專案
+8/22 修復日誌生成驗證問題
+8/22 測試每日摘要功能
+```
+
+**如果沒有有效訊息內容，請回報**: 
+```
+今日沒有發現工作相關內容
+```
 """)
     
     PROJECT_EXTRACTION_PROMPT = PromptTemplate("""

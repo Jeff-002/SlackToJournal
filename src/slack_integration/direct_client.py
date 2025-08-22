@@ -143,6 +143,28 @@ class DirectSlackClient:
             logger.error(f"Failed to get channels: {e}")
             raise SlackIntegrationError(f"Channels request failed: {e}")
     
+    async def join_channel(self, channel_id: str) -> bool:
+        """Join a channel if not already a member."""
+        if not self._authenticated:
+            await self.authenticate()
+        
+        try:
+            response = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.bot_client.conversations_join(channel=channel_id)
+            )
+            
+            if response["ok"]:
+                logger.info(f"Successfully joined channel {channel_id}")
+                return True
+            else:
+                logger.warning(f"Failed to join channel {channel_id}: {response.get('error')}")
+                return False
+                
+        except SlackApiError as e:
+            logger.warning(f"Could not join channel {channel_id}: {e}")
+            return False
+    
     async def get_messages(
         self,
         channel_id: str,
@@ -169,21 +191,45 @@ class DirectSlackClient:
                     latest = message_filter.end_date.timestamp()
             
             while collected < limit:
-                response = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: self.bot_client.conversations_history(
-                        channel=channel_id,
-                        cursor=cursor,
-                        limit=min(200, limit - collected),
-                        oldest=oldest,
-                        latest=latest
+                try:
+                    response = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: self.bot_client.conversations_history(
+                            channel=channel_id,
+                            cursor=cursor,
+                            limit=min(200, limit - collected),
+                            oldest=oldest,
+                            latest=latest
+                        )
                     )
-                )
+                except SlackApiError as e:
+                    if "not_in_channel" in str(e):
+                        logger.info(f"Bot not in channel {channel_id}, attempting to join...")
+                        # Try to join the channel
+                        joined = await self.join_channel(channel_id)
+                        if joined:
+                            # Retry getting messages after joining
+                            try:
+                                response = await asyncio.get_event_loop().run_in_executor(
+                                    None,
+                                    lambda: self.bot_client.conversations_history(
+                                        channel=channel_id,
+                                        cursor=cursor,
+                                        limit=min(200, limit - collected),
+                                        oldest=oldest,
+                                        latest=latest
+                                    )
+                                )
+                            except SlackApiError as retry_e:
+                                logger.error(f"Still failed to get messages after joining {channel_id}: {retry_e}")
+                                break
+                        else:
+                            logger.warning(f"Could not join channel {channel_id}, skipping")
+                            break
+                    else:
+                        raise e
                 
                 if not response["ok"]:
-                    if response["error"] == "not_in_channel":
-                        logger.warning(f"Bot not in channel {channel_id}, skipping")
-                        break
                     raise SlackIntegrationError(f"Failed to get messages: {response.get('error')}")
                 
                 for msg_data in response["messages"]:

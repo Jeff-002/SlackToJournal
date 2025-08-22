@@ -78,10 +78,10 @@ class JournalService:
             if target_date is None:
                 target_date = datetime.now()
             
-            # Calculate week boundaries
+            # Calculate work week boundaries (Monday to Friday only)
             week_start = target_date - timedelta(days=target_date.weekday())
             week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
-            week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
+            week_end = week_start + timedelta(days=4, hours=23, minutes=59, seconds=59)
             
             logger.info(f"Generating journal for week: {week_start.date()} to {week_end.date()}")
             
@@ -223,7 +223,8 @@ class JournalService:
     async def generate_daily_summary(
         self,
         target_date: Optional[datetime] = None,
-        user_name: str = "Team Member"
+        user_name: str = "Team Member",
+        upload_to_drive: bool = True
     ) -> ProcessingResult:
         """
         Generate a daily work summary.
@@ -231,6 +232,7 @@ class JournalService:
         Args:
             target_date: Target date (defaults to today)
             user_name: Name of the user
+            upload_to_drive: Whether to upload to Google Drive
             
         Returns:
             ProcessingResult with daily summary
@@ -304,20 +306,31 @@ class JournalService:
             
             processing_time = time.time() - start_time
             
-            # Upload daily summary
-            if ai_response.raw_response:
+            # Export results
+            export_results = {}
+            
+            # Upload to Drive if requested
+            if upload_to_drive and ai_response.raw_response:
                 try:
                     summary_data = json.loads(ai_response.raw_response) if ai_response.raw_response.startswith('{') else {"summary": ai_response.raw_response}
-                    await self.drive_service.upload_daily_summary(summary_data, target_date)
+                    upload_result = await self.drive_service.upload_daily_summary(summary_data, target_date)
+                    export_results['drive_upload'] = {'success': True, 'result': upload_result}
                 except Exception as e:
                     logger.warning(f"Failed to upload daily summary: {e}")
+                    export_results['drive_upload'] = {'success': False, 'error': str(e)}
+            
+            # Always save locally (like weekly journal)
+            if ai_response.raw_response:
+                local_file = self._save_daily_summary_locally(journal_entry, target_date)
+                export_results['local_file'] = local_file
             
             return ProcessingResult(
                 success=True,
                 journal_entry=journal_entry,
                 processing_time=processing_time,
                 messages_processed=len(daily_messages),
-                quality_score=ai_response.confidence_score
+                quality_score=ai_response.confidence_score,
+                export_results=export_results
             )
             
         except Exception as e:
@@ -370,32 +383,46 @@ class JournalService:
             projects_count=ai_response.projects_identified
         )
         
-        # Format content
-        if ai_response.journal_structure:
-            # Use structured data to create formatted content
-            journal_data = {
-                'executive_summary': getattr(ai_response.journal_structure, 'executive_summary', '本週工作概況'),
-                'key_highlights': getattr(ai_response.journal_structure, 'key_highlights', []),
-                'projects': getattr(ai_response.journal_structure, 'projects', []),
-                'work_by_category': getattr(ai_response.journal_structure, 'work_by_category', {}),
-                'action_items': getattr(ai_response.journal_structure, 'action_items', []),
-                'metrics': getattr(ai_response.journal_structure, 'metrics', {}),
-                'learnings': getattr(ai_response.journal_structure, 'learnings', []),
-                'challenges': getattr(ai_response.journal_structure, 'challenges', [])
-            }
-            
-            # Get default template config
-            template_config = JournalTemplates.get_default_config()
-            
-            # Render journal using template
-            formatted_content = JournalTemplates.render_weekly_journal(
-                journal_data=journal_data,
-                metadata=metadata,
-                config=template_config
-            )
+        # Format content using simple format
+        if ai_response.raw_response:
+            try:
+                # Use simple text format directly
+                formatted_content = f"""# 工作日誌_{week_start.strftime('%Y%m%d')}_{week_end.strftime('%Y%m%d')}
+
+**期間**: {week_start.strftime('%m/%d')} - {week_end.strftime('%m/%d')}  
+**生成**: {datetime.now().strftime('%Y-%m-%d %H:%M')}  
+
+## 工作內容
+
+{ai_response.raw_response}
+
+---
+*共處理 {messages_count} 條訊息*
+"""
+            except (json.JSONDecodeError, Exception) as e:
+                logger.warning(f"Failed to parse AI response as JSON: {e}")
+                formatted_content = f"""# 工作日誌_{week_start.strftime('%Y%m%d')}_{week_end.strftime('%Y%m%d')}
+
+**期間**: {week_start.strftime('%m/%d')} - {week_end.strftime('%m/%d')}  
+**生成**: {datetime.now().strftime('%Y-%m-%d %H:%M')}  
+
+{ai_response.raw_response}
+
+---
+*共處理 {messages_count} 條訊息*
+"""
         else:
-            # Fallback to raw response
-            formatted_content = ai_response.raw_response or "無法生成結構化日誌內容"
+            # Fallback content
+            formatted_content = f"""# 工作日誌_{week_start.strftime('%Y%m%d')}_{week_end.strftime('%Y%m%d')}
+
+**期間**: {week_start.strftime('%m/%d')} - {week_end.strftime('%m/%d')}  
+**生成**: {datetime.now().strftime('%Y-%m-%d %H:%M')}  
+
+本期間沒有檢測到工作相關討論。
+
+---
+*共處理 {messages_count} 條訊息*
+"""
         
         # Create journal entry
         journal_entry = JournalEntry(
@@ -430,9 +457,9 @@ class JournalService:
             output_dir = Path("journals")
             output_dir.mkdir(exist_ok=True)
             
-            # Generate filename with date
-            week_end = week_start + timedelta(days=6)
-            filename = f"工作日誌_{week_start.strftime('%Y%m%d')}_{week_end.strftime('%Y%m%d')}.md"
+            # Generate filename with work week dates (Monday to Friday)
+            week_end_filename = week_start + timedelta(days=4)  # Friday
+            filename = f"工作日誌_{week_start.strftime('%Y%m%d')}_{week_end_filename.strftime('%Y%m%d')}.md"
             file_path = output_dir / filename
             
             # Write journal content
@@ -455,6 +482,71 @@ class JournalService:
             
         except Exception as e:
             logger.error(f"Failed to save journal locally: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def _save_daily_summary_locally(
+        self, 
+        journal_entry: JournalEntry, 
+        target_date: datetime
+    ) -> Dict[str, Any]:
+        """
+        Save daily summary to local file.
+        
+        Args:
+            journal_entry: Journal entry to save
+            target_date: Target date for filename
+            
+        Returns:
+            Dictionary with local file information
+        """
+        from pathlib import Path
+        
+        try:
+            # Create output directory
+            output_dir = Path("journals")
+            output_dir.mkdir(exist_ok=True)
+            
+            # Generate filename for daily summary
+            filename = f"工作日誌_{target_date.strftime('%Y%m%d')}.md"
+            file_path = output_dir / filename
+            
+            # Create formatted content for daily summary
+            formatted_content = f"""# 工作日誌_{target_date.strftime('%Y%m%d')}
+
+**日期**: {target_date.strftime('%Y-%m-%d')}  
+**生成**: {datetime.now().strftime('%Y-%m-%d %H:%M')}  
+
+## 工作內容
+
+{journal_entry.content}
+
+---
+*每日摘要由 SlackToJournal 自動生成*
+"""
+            
+            # Write journal content
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(formatted_content)
+            
+            # Update journal entry with file info
+            journal_entry.file_name = filename
+            journal_entry.file_path = str(file_path.absolute())
+            journal_entry.file_size = file_path.stat().st_size
+            
+            logger.info(f"Daily summary saved locally: {file_path}")
+            
+            return {
+                'success': True,
+                'file_path': str(file_path.absolute()),
+                'file_name': filename,
+                'file_size': file_path.stat().st_size
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to save daily summary locally: {e}")
             return {
                 'success': False,
                 'error': str(e)

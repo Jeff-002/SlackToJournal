@@ -24,18 +24,54 @@ class MarkdownFormatter:
     def format_header(metadata: JournalMetadata, level: int = 1) -> str:
         """Format journal header."""
         header_prefix = "#" * level
-        date_range = f"{metadata.period_start.strftime('%Y-%m-%d')} 到 {metadata.period_end.strftime('%Y-%m-%d')}"
+        date_range = f"{metadata.period_start.strftime('%m/%d')} - {metadata.period_end.strftime('%m/%d')}"
         
-        return f"""
-{header_prefix} {metadata.title}
+        return f"""# 工作日誌_{metadata.period_start.strftime('%Y%m%d')}_{metadata.period_end.strftime('%Y%m%d')}
 
 **期間**: {date_range}  
-**作者**: {metadata.author_name}  
-**團隊**: {metadata.team or 'N/A'}  
-**生成時間**: {metadata.generated_at.strftime('%Y-%m-%d %H:%M:%S')}  
+**生成**: {metadata.generated_at.strftime('%Y-%m-%d %H:%M')}  
 
----
 """
+    
+    @staticmethod
+    def format_simple_work_list(work_items: List[Dict[str, Any]], summary: Dict[str, Any], has_content: bool = None) -> str:
+        """Format simple work items list."""
+        # Check if there's actually content
+        if has_content is False or not work_items:
+            return "本期間沒有檢測到工作相關的 Slack 討論內容。\n"
+        
+        # Group by category
+        categories = {}
+        for item in work_items:
+            category = item.get('category', '其他')
+            if category not in categories:
+                categories[category] = []
+            categories[category].append(item)
+        
+        content = []
+        
+        # Add main focus summary if available
+        if summary and summary.get('main_focus'):
+            content.append(f"**本週重點**: {summary['main_focus']}\n")
+        
+        # Add work items by category
+        category_order = ['開發', '會議', '討論', '決策', '任務', '問題', '計劃', '其他']
+        
+        for category in category_order:
+            if category in categories:
+                items = categories[category]
+                content.append(f"## {category}")
+                for item in items:
+                    content_text = item.get('content', '未知工作項目')
+                    participants = item.get('participants', [])
+                    if participants:
+                        participant_str = f" ({', '.join(participants[:2])}" + ("等" if len(participants) > 2 else "") + ")"
+                    else:
+                        participant_str = ""
+                    content.append(f"- {content_text}{participant_str}")
+                content.append("")
+        
+        return "\n".join(content)
     
     @staticmethod
     def format_summary(summary: str) -> str:
@@ -417,6 +453,34 @@ $tomorrow_plans
 
 $footer
 """)
+    
+    SIMPLE_WORK_LOG_TEMPLATE = Template("""$header$work_items
+---
+*共 $total_items 項工作內容*
+""")
+
+    @classmethod
+    def render_simple_work_log(
+        cls,
+        journal_data: Dict[str, Any],
+        metadata: JournalMetadata
+    ) -> str:
+        """Render simple work log template."""
+        formatter = MarkdownFormatter()
+        
+        work_items = journal_data.get('work_items', [])
+        summary = journal_data.get('summary', {})
+        has_content = journal_data.get('has_content', True)
+        
+        header = formatter.format_header(metadata)
+        work_list = formatter.format_simple_work_list(work_items, summary, has_content)
+        total_items = summary.get('total_items', len(work_items))
+        
+        return cls.SIMPLE_WORK_LOG_TEMPLATE.substitute(
+            header=header,
+            work_items=work_list,
+            total_items=total_items
+        )
     
     @classmethod
     def render_weekly_journal(
