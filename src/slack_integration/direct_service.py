@@ -340,6 +340,8 @@ class DirectSlackService:
         return {
             'ts': message.ts,
             'user': message.user,
+            'user_name': message.user_name,
+            'user_real_name': message.user_real_name,
             'text': message.text,
             'channel': message.channel,
             'datetime': message.datetime.isoformat() if hasattr(message, 'datetime') else None,

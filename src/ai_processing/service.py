@@ -114,7 +114,8 @@ class AIProcessingService:
         self,
         messages: List[Dict[str, Any]],
         date: datetime,
-        user_name: str = "User"
+        user_name: str = "User",
+        include_user_names: bool = False
     ) -> AIResponse:
         """
         Generate a daily work summary.
@@ -140,6 +141,7 @@ class AIProcessingService:
             # Create request
             ai_request = AIRequest(
                 messages=messages,
+                context={"user_name": user_name, "include_user_names": include_user_names},
                 model_type=AIModelType(self.settings.model),
                 temperature=self.settings.temperature,
                 max_tokens=4096,

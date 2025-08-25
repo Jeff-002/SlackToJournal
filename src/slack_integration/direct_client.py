@@ -305,9 +305,26 @@ class DirectSlackClient:
                         if len(text) < message_filter.min_length:
                             continue
                     
+                    # Get user info for display name
+                    user_id = msg_data.get("user")
+                    user_name = None
+                    user_real_name = None
+                    
+                    if user_id:
+                        try:
+                            user_info = await self.get_user_info(user_id)
+                            if user_info:
+                                # Use display_name as the primary choice for user identification
+                                user_name = user_info.name
+                                user_real_name = user_info.display_name or user_info.real_name
+                        except Exception as e:
+                            logger.warning(f"Failed to get user info for {user_id}: {e}")
+                    
                     message = SlackMessage(
                         ts=msg_data["ts"],
-                        user=msg_data.get("user"),
+                        user=user_id,
+                        user_name=user_name,
+                        user_real_name=user_real_name,
                         text=text,
                         channel=channel_id,
                         thread_ts=msg_data.get("thread_ts"),
@@ -350,11 +367,18 @@ class DirectSlackClient:
                 return None
             
             user_data = response["user"]
+            profile = user_data.get("profile", {})
+            
+            
             return SlackUser(
                 id=user_data["id"],
                 name=user_data.get("name", "Unknown"),
                 real_name=user_data.get("real_name"),
-                email=user_data.get("profile", {}).get("email"),
+                display_name=profile.get("display_name"),
+                display_name_normalized=profile.get("display_name_normalized"),
+                first_name=profile.get("first_name"),
+                last_name=profile.get("last_name"),
+                email=profile.get("email"),
                 is_bot=user_data.get("is_bot", False),
                 team_id=user_data.get("team_id", "")
             )

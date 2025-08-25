@@ -3,6 +3,7 @@ applyTo: '**'
 ---
 
 # SlackToJournal Agent 需求架構與執行流程
+執行每項任務時請先經過思考再執行
 
 ## 項目概述
 實作一個基於Python的Agent，透過直接Slack API整合，自動讀取當週工作內容並整理成工作日誌，最後將日誌寫入Google雲端硬碟。
@@ -420,9 +421,9 @@ logging:
 3. **結果驗證**: 檢查AI輸出的完整性和準確性
 4. **結果後處理**: 格式化AI輸出為最終日誌格式
 
-### Prompt範例
+### Prompt範例與最佳實踐
 ```python
-# 工作內容分析Prompt
+# 工作內容分析Prompt (經優化的版本)
 CONTENT_ANALYSIS_PROMPT = """
 分析以下Slack工作訊息，提取並條列化工作內容：
 
@@ -433,17 +434,117 @@ CONTENT_ANALYSIS_PROMPT = """
 {
   "work_items": [
     {
-      "category": "專案分類",
-      "title": "工作項目標題",
-      "description": "詳細描述",
-      "status": "進行狀態",
+      "date": "MM/DD",
+      "user_display_name": "真實姓名",
+      "tag": "狀態標籤",
+      "project": "專案名稱", 
+      "description": "工作描述",
       "participants": ["參與人員"]
     }
   ],
   "summary": "本週工作總結"
 }
 """
+
+# 標籤分類邏輯 (基於關鍵字的直接處理)
+TAG_CLASSIFICATION_RULES = {
+    "上線": ["develop", "deploy", "release", "production", "live"],
+    "分支合併": ["merge", "branch", "feat:", "feature"],
+    "交測": ["test", "testing", "QA", "驗收"],
+    "修復": ["fix", "bug", "hotfix", "patch"],
+    "開發": ["implement", "coding", "development"],
+    "會議": ["meeting", "討論", "review"],
+    "文檔": ["doc", "documentation", "readme"]
+}
 ```
+
+### AI處理策略優化
+1. **混合處理模式**: 
+   - 對於日誌摘要使用直接代碼處理 (確保準確性)
+   - 對於複雜分析使用AI處理 (提供智能化)
+   
+2. **關鍵字優先策略**: 
+   - 優先使用關鍵字匹配進行標籤分類
+   - AI作為後備或複雜情況的處理方案
+   
+3. **用戶資訊處理**:
+   - 完整保留Slack用戶資訊鏈 (user_id -> user_name -> display_name)
+   - 確保在消息處理流水線中正確傳遞用戶資料
+
+### 實際應用的改進經驗
+```python
+# 直接處理模式範例 (用於確保準確性的場景)
+def _analyze_messages_directly(self, request: AIRequest) -> AIResponse:
+    """直接分析訊息，不依賴AI，確保標籤分類正確性"""
+    filtered_messages = self._filter_excluded_messages(request.messages)
+    include_user_names = request.context.get('include_user_names', False)
+    
+    summary_lines = []
+    for msg in filtered_messages:
+        # 使用關鍵字直接判斷標籤
+        tag = self._get_tag_suggestion(msg.get('text', ''))
+        user_display_name = (msg.get('user_real_name') or 
+                           msg.get('user_name') or 
+                           msg.get('user', 'Unknown'))
+        
+        # 格式化輸出
+        if include_user_names:
+            summary_lines.append(f"{date} `{user_display_name}` `{tag}` {project} - {description}")
+        else:
+            summary_lines.append(f"{date} `{tag}` {project} - {description}")
+    
+    return AIResponse(...)
+
+# URL清理和內容提取
+def _extract_project_info(self, text: str) -> Tuple[str, str]:
+    """提取專案資訊並清理URL連結"""
+    # 移除URLs但保留專案名稱
+    cleaned_text = re.sub(r'https?://[^\s]+', '', text)
+    # 提取專案關鍵資訊
+    project_match = re.search(r'(\w+\.\w+|\w+)', cleaned_text)
+    return project_match.group(1) if project_match else "unknown"
+```
+
+### 消息處理流水線最佳實踐
+```python
+# 確保用戶資訊在消息轉換中不丟失
+def convert_messages_for_ai(self, messages: List[SlackMessage]) -> List[Dict]:
+    """將SlackMessage轉換為AI處理格式，保留完整用戶資訊"""
+    formatted_messages = []
+    for msg in messages:
+        formatted_messages.append({
+            'user': getattr(msg, 'user', 'Unknown'),
+            'user_name': getattr(msg, 'user_name', None),        # 重要：保留用戶名
+            'user_real_name': getattr(msg, 'user_real_name', None), # 重要：保留顯示名
+            'text': getattr(msg, 'text', ''),
+            'channel': getattr(msg, 'channel', 'general'),
+            'timestamp': getattr(msg, 'datetime', datetime.now()).isoformat()
+        })
+    return formatted_messages
+```
+
+### 常見問題與解決方案
+1. **用戶顯示名稱顯示為ID**
+   - 原因: 消息轉換時缺少user_name/user_real_name字段
+   - 解決: 確保SlackMessage到字典轉換時包含所有用戶字段
+
+2. **AI標籤分類不準確** 
+   - 原因: Gemini AI忽略複雜的條件邏輯
+   - 解決: 使用直接代碼處理 + 關鍵字匹配
+
+3. **URL連結污染輸出**
+   - 原因: Slack消息包含大量URL連結
+   - 解決: 使用正則表達式清理URL但保留專案名稱
+
+4. **消息過濾過於嚴格**
+   - 原因: exclude_keywords設置不當
+   - 解決: 多層過濾 + 環境變數配置
+
+### 效能優化建議
+1. **用戶資訊緩存**: 避免重複API調用Slack用戶資訊
+2. **批量處理**: 將相似消息合併處理減少AI調用
+3. **智能過濾**: 在早期階段過濾無關消息
+4. **異步處理**: 使用async/await提升處理速度
 
 ## 開發指導原則
 1. **遵循Python PEP 8編碼規範**

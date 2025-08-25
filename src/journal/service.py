@@ -121,6 +121,8 @@ class JournalService:
             for msg in messages:
                 formatted_messages.append({
                     'user': getattr(msg, 'user', 'Unknown'),
+                    'user_name': getattr(msg, 'user_name', None),
+                    'user_real_name': getattr(msg, 'user_real_name', None),
                     'text': getattr(msg, 'text', ''),
                     'channel': getattr(msg, 'channel', 'general'),
                     'timestamp': getattr(msg, 'datetime', datetime.now()).isoformat() if hasattr(msg, 'datetime') else 'Unknown'
@@ -263,6 +265,8 @@ class JournalService:
                 if msg_date == target_date.date():
                     daily_messages.append({
                         'user': getattr(msg, 'user', 'Unknown'),
+                        'user_name': getattr(msg, 'user_name', None),
+                        'user_real_name': getattr(msg, 'user_real_name', None),
                         'text': getattr(msg, 'text', ''),
                         'channel': getattr(msg, 'channel', 'general'),
                         'timestamp': getattr(msg, 'datetime', datetime.now()).isoformat()
@@ -276,11 +280,17 @@ class JournalService:
                     messages_processed=0
                 )
             
+            # Determine if we should include user names in output
+            # Include names if no specific user filter was provided
+            include_user_names = not (user_email or filter_user_name)
+            user_display_name = filter_user_name or "Team Member"
+            
             # Process with AI
             ai_response = await self.ai_service.generate_daily_summary(
                 messages=daily_messages,
                 date=target_date,
-                user_name=filter_user_name or "Team Member"
+                user_name=user_display_name,
+                include_user_names=include_user_names
             )
             
             if not ai_response.success:
@@ -302,9 +312,12 @@ class JournalService:
                 confidence_score=ai_response.confidence_score
             )
             
+            # Post-process AI response to enhance status labels
+            processed_content = self._enhance_status_labels(ai_response.raw_response or "無法生成日誌內容")
+            
             journal_entry = JournalEntry(
                 metadata=metadata,
-                content=ai_response.raw_response or "無法生成日誌內容",
+                content=processed_content,
                 format_type=JournalFormat.MARKDOWN
             )
             
@@ -390,6 +403,9 @@ class JournalService:
         # Format content using simple format
         if ai_response.raw_response:
             try:
+                # Post-process AI response to enhance status labels
+                processed_content = self._enhance_status_labels(ai_response.raw_response)
+                
                 # Use simple text format directly
                 formatted_content = f"""# 工作日誌_{week_start.strftime('%Y%m%d')}_{week_end.strftime('%Y%m%d')}
 
@@ -398,19 +414,21 @@ class JournalService:
 
 ## 工作內容
 
-{ai_response.raw_response}
+{processed_content}
 
 ---
 *共處理 {messages_count} 條訊息*
 """
             except (json.JSONDecodeError, Exception) as e:
                 logger.warning(f"Failed to parse AI response as JSON: {e}")
+                # Post-process fallback content as well
+                processed_fallback = self._enhance_status_labels(ai_response.raw_response)
                 formatted_content = f"""# 工作日誌_{week_start.strftime('%Y%m%d')}_{week_end.strftime('%Y%m%d')}
 
 **期間**: {week_start.strftime('%m/%d')} - {week_end.strftime('%m/%d')}  
 **生成**: {datetime.now().strftime('%Y-%m-%d %H:%M')}  
 
-{ai_response.raw_response}
+{processed_fallback}
 
 ---
 *共處理 {messages_count} 條訊息*
@@ -612,3 +630,121 @@ class JournalService:
                 'debug': self.settings.debug
             }
         }
+    
+    def _enhance_status_labels(self, content: str) -> str:
+        """
+        Enhanced status labels in journal content with highlighting and better formatting.
+        
+        Args:
+            content: Raw AI generated content
+            
+        Returns:
+            Enhanced content with improved status labels
+        """
+        if not content:
+            return content
+        
+        # Enhanced label patterns and replacements
+        import re
+        
+        # Pattern to match existing AI-generated status labels
+        # Matches: MM/DD `status` description, MM/DD **status** description or MM/DD [status] description
+        # Also matches lines that don't have any status labels yet
+        label_pattern = r'^(\d{1,2}/\d{1,2})\s+(?:`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\])?(.+)$'
+        
+        lines = content.split('\n')
+        enhanced_lines = []
+        
+        for line in lines:
+            # Skip empty lines, headers, and non-work items
+            if not line.strip() or line.startswith('#') or line.startswith('```') or line.startswith('本'):
+                enhanced_lines.append(line)
+                continue
+                
+            # Check if line matches work item pattern
+            match = re.match(label_pattern, line, re.MULTILINE)
+            
+            if match:
+                date = match.group(1)
+                status1 = match.group(2)  # From `status` format
+                status2 = match.group(3)  # From **status** format
+                status3 = match.group(4)  # From [status] format
+                description = match.group(5).strip()
+                
+                # Use whichever status was captured, or empty string if none
+                existing_status = (status1 or status2 or status3 or "").strip()
+                
+                # Use existing status if it exists, otherwise determine from description
+                if existing_status:
+                    # Keep the existing status that was correctly determined
+                    enhanced_status = f"`{existing_status}` "
+                else:
+                    # Determine status from description content  
+                    enhanced_status = self._determine_enhanced_status("", description)
+                
+                # Remove existing </br> if present and add new one
+                description_clean = description.replace('</br>', '').strip()
+                
+                # Format enhanced line with </br> at the end
+                enhanced_line = f"{date} {enhanced_status}{description_clean}</br>"
+                enhanced_lines.append(enhanced_line)
+            else:
+                # Check if it's a work item without proper format
+                # Pattern for simple date-based lines: MM/DD description
+                simple_pattern = r'^(\d{1,2}/\d{1,2})\s+(.+)$'
+                simple_match = re.match(simple_pattern, line)
+                
+                if simple_match:
+                    date = simple_match.group(1)
+                    description = simple_match.group(2).strip()
+                    
+                    # Remove existing </br> if present
+                    description_clean = description.replace('</br>', '').strip()
+                    
+                    # Determine status from description content
+                    enhanced_status = self._determine_enhanced_status("", description_clean)
+                    enhanced_line = f"{date} {enhanced_status}{description_clean}</br>"
+                    enhanced_lines.append(enhanced_line)
+                else:
+                    # Keep original line
+                    enhanced_lines.append(line)
+        
+        return '\n'.join(enhanced_lines)
+    
+    def _determine_enhanced_status(self, existing_status: str, description: str) -> str:
+        """
+        Determine enhanced status label based on existing status and description content.
+        
+        Args:
+            existing_status: Existing status from AI
+            description: Work item description
+            
+        Returns:
+            Enhanced status label with formatting
+        """
+        # Combine status and description for analysis
+        combined_text = f"{existing_status} {description}".lower()
+        
+        # Production/deployment keywords (更精確的關鍵字匹配)
+        production_keywords = ['develop', 'dev', 'master', 'deploy', 'deployment', '部署', '上線', 'production', 'prod', 'release', '發布', 'live']
+        # Testing keywords  
+        testing_keywords = ['test', 'testing', 'training', '測試', '測試機', 'qa', 'quality', 'verify', '驗證', 'staging']
+        
+        # 詳細日誌記錄來調試
+        logger.debug(f"Status analysis - Combined text: {combined_text}")
+        
+        # Check for production/deployment (優先級最高)
+        for keyword in production_keywords:
+            if keyword in combined_text:
+                logger.debug(f"Found production keyword: {keyword}")
+                return "`上線` "
+        
+        # Check for testing
+        for keyword in testing_keywords:
+            if keyword in combined_text:
+                logger.debug(f"Found testing keyword: {keyword}")
+                return "`交測` "
+        
+        # Default to merge
+        logger.debug("No specific keywords found, defaulting to merge")
+        return "`分支合併` "

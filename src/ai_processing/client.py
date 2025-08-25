@@ -100,6 +100,167 @@ class GeminiClient:
     
     def analyze_messages(self, request: AIRequest) -> AIResponse:
         """
+        Analyze messages. For daily summaries, we'll use a more direct approach
+        to ensure correct tag classification.
+        """
+        # For daily summaries, use direct code processing instead of AI
+        if request.task_type == "daily_summary":
+            return self._analyze_messages_directly(request)
+        else:
+            return self._analyze_messages_with_ai(request)
+    
+    def _analyze_messages_directly(self, request: AIRequest) -> AIResponse:
+        """
+        Directly analyze messages without AI to ensure correct tag classification.
+        """
+        start_time = time.time()
+        
+        try:
+            # Filter messages
+            filtered_messages = self._filter_excluded_messages(request.messages)
+            
+            # Check if we should include user names
+            include_user_names = request.context and request.context.get('include_user_names', False)
+            
+            # Generate summary directly
+            summary_lines = []
+            for msg in filtered_messages:
+                text = msg.get('text', '')
+                tag = self._get_tag_suggestion(text)
+                
+                # Get user display name - use the display name from Slack
+                user_real_name = msg.get('user_real_name')
+                user_name = msg.get('user_name') 
+                user_id = msg.get('user', 'Unknown User')
+                
+                user_display_name = user_real_name or user_name or user_id
+                
+                # Extract project and description from text
+                project, description = self._extract_project_info(text)
+                
+                # Format as MM/DD `tag` project - description</br>
+                # Or MM/DD `user_name` `tag` project - description</br> if include_user_names
+                from datetime import datetime
+                now = datetime.now()
+                date_str = now.strftime('%m/%d')
+                
+                if include_user_names:
+                    summary_lines.append(f"{date_str} `{user_display_name}` `{tag}` {project} - {description}</br>")
+                else:
+                    summary_lines.append(f"{date_str} `{tag}` {project} - {description}</br>")
+            
+            raw_response = "\n".join(summary_lines)
+            processing_time = time.time() - start_time
+            
+            return AIResponse(
+                success=True,
+                model_used=request.model_type,
+                processing_time=processing_time,
+                tokens_used=0,  # No AI tokens used
+                raw_response=raw_response,
+                confidence_score=1.0,  # High confidence since we're doing direct processing
+                completeness_score=1.0,
+                messages_processed=len(filtered_messages),
+                work_items_extracted=len(summary_lines),
+                projects_identified=1
+            )
+            
+        except Exception as e:
+            processing_time = time.time() - start_time
+            error_message = f"Direct analysis failed: {str(e)}"
+            logger.error(error_message)
+            
+            return AIResponse(
+                success=False,
+                error_message=error_message,
+                model_used=request.model_type,
+                processing_time=processing_time,
+                tokens_used=0,
+                messages_processed=len(request.messages),
+                work_items_extracted=0,
+                projects_identified=0
+            )
+    
+    def _extract_project_info(self, text: str) -> tuple[str, str]:
+        """Extract project name and description from Slack message text."""
+        lines = text.strip().split('\n')
+        if not lines:
+            return "unknown", "no description"
+        
+        # First line usually contains project info
+        first_line = lines[0].strip()
+        
+        # Remove backticks from develop
+        project_line = first_line.replace('`develop`', '').strip()
+        
+        # Extract project name (first part before space or <)
+        if '<' in project_line:
+            parts = project_line.split('<')[0].strip()
+        else:
+            parts = project_line
+        
+        project = parts.strip()
+        
+        # Look for description in the rest of the text, avoiding URLs
+        description = "工作項目"
+        
+        # Check for PR description or commit message
+        if 'feat:' in text:
+            desc_start = text.find('feat:') + 5
+            desc_end = text.find('>', desc_start)
+            if desc_end == -1:
+                desc_end = len(text)
+            description = text[desc_start:desc_end].strip()
+        elif 'fix:' in text:
+            desc_start = text.find('fix:') + 4
+            desc_end = text.find('>', desc_start)
+            if desc_end == -1:
+                desc_end = len(text)
+            description = text[desc_start:desc_end].strip()
+        elif '提取要求' in text:
+            # Look for PR description pattern like "提取要求 61899: 調整買屋廣告搜尋邏輯"
+            for line in lines:
+                if '提取要求' in line and ':' in line:
+                    # Extract description after the colon
+                    desc_part = line.split(':', 1)[-1].strip()
+                    if desc_part and '<' in desc_part:
+                        # Remove URL part
+                        desc_part = desc_part.split('<')[0].strip()
+                    if desc_part:
+                        description = desc_part
+                        break
+        elif ':' in text:
+            # Look for description after colon, but avoid URLs
+            for line in lines:
+                if ':' in line and not line.startswith('http') and not line.startswith('<http'):
+                    # Extract description before any URL
+                    desc_part = line.split(':', 1)[-1].strip()
+                    if desc_part and '<' in desc_part:
+                        # Remove URL part
+                        desc_part = desc_part.split('<')[0].strip()
+                    if desc_part:
+                        description = desc_part
+                        break
+        
+        # Clean up description - remove any remaining URL fragments
+        import re
+        # Remove URLs starting with < and ending with >
+        description = re.sub(r'<[^>]*>', '', description).strip()
+        # Remove standalone URLs
+        description = re.sub(r'https?://[^\s]+', '', description).strip()
+        # Remove file paths that look like URLs
+        description = re.sub(r'//[^\s]*', '', description).strip()
+        # Remove PR numbers with > suffix like "61899>"
+        description = re.sub(r'\d+>', '', description).strip()
+        # Remove any remaining > or < characters
+        description = description.replace('>', '').replace('<', '').strip()
+        # Clean up any remaining colons at the start
+        description = description.lstrip(':').strip()
+        
+        return project or "unknown", description or "工作項目"
+
+    def _analyze_messages_with_ai(self, request: AIRequest) -> AIResponse:
+        """
         Analyze messages using Gemini AI.
         
         Args:
@@ -282,7 +443,10 @@ Respond in JSON format:
             channel = msg.get('channel', 'general')
             timestamp = msg.get('timestamp', 'Unknown time')
             
-            messages_text += f"[{i}] {timestamp} - {user} in #{channel}:\n{text}\n\n"
+            # Pre-analyze message for tag suggestion
+            tag_hint = self._get_tag_suggestion(text)
+            
+            messages_text += f"[{i}] {timestamp} - {user} in #{channel}:\n{text}\n[建議標籤: {tag_hint}]\n\n"
         
         now = datetime.now()
         
@@ -504,6 +668,66 @@ Respond in JSON format:
         
         return min(1.0, score)
     
+    def _get_user_display_name(self, user_id: str) -> str:
+        """
+        Convert Slack user ID to display name.
+        
+        Args:
+            user_id: Slack user ID
+            
+        Returns:
+            Display name for the user
+        """
+        # Cache for user info to avoid repeated API calls
+        if not hasattr(self, '_user_cache'):
+            self._user_cache = {}
+        
+        if user_id in self._user_cache:
+            return self._user_cache[user_id]
+        
+        # This method should no longer be needed since we get real names from Slack API
+        # But keeping as fallback for any missing users
+        
+        # Check if we have a mapping for this user
+        if user_id in user_mappings:
+            display_name = user_mappings[user_id]
+        else:
+            # Try to get a more readable name from the user ID
+            # If it starts with U and is 11 characters, it's likely a Slack user ID
+            if user_id.startswith('U') and len(user_id) == 11:
+                display_name = f"User_{user_id[-4:]}"  # Show last 4 characters
+            else:
+                display_name = user_id
+        
+        # Cache the result
+        self._user_cache[user_id] = display_name
+        return display_name
+
+    def _get_tag_suggestion(self, text: str) -> str:
+        """
+        Pre-analyze message text to suggest appropriate tag.
+        
+        Args:
+            text: Message text
+            
+        Returns:
+            Suggested tag
+        """
+        text_lower = text.lower()
+        
+        # Check for deployment/production keywords (highest priority)
+        deploy_keywords = ['develop', 'dev', 'master', '部署', '上線', 'deploy', 'production', 'prod']
+        if any(keyword in text_lower for keyword in deploy_keywords):
+            return '上線'
+        
+        # Check for testing keywords
+        test_keywords = ['測試', '測試機', 'test', 'testing', 'training', 'qa', 'staging']
+        if any(keyword in text_lower for keyword in test_keywords):
+            return '交測'
+        
+        # Default
+        return '分支合併'
+
     def get_model_info(self) -> Dict[str, Any]:
         """
         Get information about the current model.
