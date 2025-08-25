@@ -272,8 +272,11 @@ Respond in JSON format:
         from .prompts import JournalPrompts
         from datetime import datetime, timedelta
         
+        # Filter out messages containing excluded keywords before sending to AI
+        filtered_messages = self._filter_excluded_messages(request.messages)
+        
         messages_text = ""
-        for i, msg in enumerate(request.messages[:50], 1):
+        for i, msg in enumerate(filtered_messages[:50], 1):
             user = msg.get('user', 'Unknown')
             text = msg.get('text', '')
             channel = msg.get('channel', 'general')
@@ -283,25 +286,126 @@ Respond in JSON format:
         
         now = datetime.now()
         
+        # Add exclusion instruction to prompt
+        exclusion_note = self._get_exclusion_note()
+        
         # Use different prompts based on task type
         if request.task_type == "daily_summary":
             # Use daily summary prompt
-            prompt = JournalPrompts.DAILY_SUMMARY_PROMPT.render(
+            base_prompt = JournalPrompts.DAILY_SUMMARY_PROMPT.render(
                 date=now.strftime('%Y-%m-%d'),
                 user_name="Team Member",
                 messages_content=messages_text
             )
+            prompt = base_prompt + exclusion_note
         else:
             # Use work analysis prompt for weekly and other tasks
             week_start = now - timedelta(days=7)
-            prompt = JournalPrompts.WORK_ANALYSIS_PROMPT.render(
+            base_prompt = JournalPrompts.WORK_ANALYSIS_PROMPT.render(
                 period_start=week_start.strftime('%Y-%m-%d'),
                 period_end=now.strftime('%Y-%m-%d'),
                 user_name="Team Member",
                 messages_content=messages_text
             )
+            prompt = base_prompt + exclusion_note
         
         return prompt
+    
+    def _filter_excluded_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Filter out messages containing excluded keywords.
+        
+        This provides a final safety net to ensure excluded content doesn't reach AI processing.
+        
+        Args:
+            messages: List of message dictionaries
+            
+        Returns:
+            Filtered list of messages
+        """
+        # Get exclude keywords from multiple sources
+        exclude_keywords = []
+        
+        # From settings (if available)
+        try:
+            from ..settings import get_settings
+            settings = get_settings()
+            if settings.slack.exclude_keywords:
+                exclude_keywords.extend(settings.slack.exclude_keywords)
+        except Exception:
+            pass
+        
+        # From environment variable
+        import os
+        env_exclude = os.getenv('SLACK_EXCLUDE_KEYWORDS', '')
+        if env_exclude.strip():
+            env_keywords = [kw.strip().lower() for kw in env_exclude.split(',') if kw.strip()]
+            exclude_keywords.extend(env_keywords)
+        
+        if not exclude_keywords:
+            return messages
+        
+        # Filter messages
+        filtered_messages = []
+        excluded_count = 0
+        
+        for msg in messages:
+            text = msg.get('text', '').lower()
+            should_exclude = False
+            
+            for keyword in exclude_keywords:
+                if keyword in text:
+                    should_exclude = True
+                    excluded_count += 1
+                    logger.info(f"AI FILTER: Excluding message with keyword '{keyword}': {msg.get('text', '')[:80]}...")
+                    break
+            
+            if not should_exclude:
+                filtered_messages.append(msg)
+        
+        if excluded_count > 0:
+            logger.info(f"AI processing excluded {excluded_count} messages containing blocked keywords")
+        
+        return filtered_messages
+    
+    def _get_exclusion_note(self) -> str:
+        """
+        Generate exclusion note for AI prompt based on configured exclude keywords.
+        
+        Returns:
+            Exclusion instruction string to add to prompts
+        """
+        # Get exclude keywords from multiple sources
+        exclude_keywords = []
+        
+        # From settings (if available)
+        try:
+            from ..settings import get_settings
+            settings = get_settings()
+            if settings.slack.exclude_keywords:
+                exclude_keywords.extend(settings.slack.exclude_keywords)
+        except Exception:
+            pass
+        
+        # From environment variable
+        import os
+        env_exclude = os.getenv('SLACK_EXCLUDE_KEYWORDS', '')
+        if env_exclude.strip():
+            env_keywords = [kw.strip().lower() for kw in env_exclude.split(',') if kw.strip()]
+            exclude_keywords.extend(env_keywords)
+        
+        if not exclude_keywords:
+            return ""
+        
+        keywords_list = "、".join(f"'{kw}'" for kw in exclude_keywords)
+        
+        return f"""
+
+**重要排除規則**: 
+- 絕對不要在工作日誌中包含任何含有以下關鍵字的內容：{keywords_list}
+- 即使這些內容看起來與工作相關，也必須完全排除
+- 這是最高優先級規則，覆蓋所有其他分析判斷
+"""
     
     def _parse_journal_structure(self, parsed_response: Dict[str, Any]) -> Optional[Any]:
         """

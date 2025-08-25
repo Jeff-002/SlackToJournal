@@ -13,7 +13,7 @@ slack:
 
 gemini:
   # API key should be set via environment variable GEMINI_API_KEY
-  model: "gemini-2.0-flash-exp"
+  model: "gemini-2.5-flash-exp"
   max_tokens: 8192
   temperature: 0.1
 

@@ -309,12 +309,27 @@ class DirectSlackService:
         if len(text) < 5:
             return False
         
-        # Skip messages containing excluded keywords
-        if hasattr(self, 'settings') and self.settings.exclude_keywords:
+        # Skip messages containing excluded keywords (HIGHEST PRIORITY - overrides all other analysis)
+        # Get exclude keywords from multiple sources
+        exclude_keywords = []
+        
+        # From settings
+        if hasattr(self, 'settings') and self.settings and self.settings.exclude_keywords:
+            exclude_keywords.extend(self.settings.exclude_keywords)
+        
+        # From environment variable SLACK_EXCLUDE_KEYWORDS
+        import os
+        env_exclude = os.getenv('SLACK_EXCLUDE_KEYWORDS', '')
+        if env_exclude.strip():
+            env_keywords = [kw.strip().lower() for kw in env_exclude.split(',') if kw.strip()]
+            exclude_keywords.extend(env_keywords)
+        
+        # Apply exclusion filter (absolute - overrides all work-related analysis)
+        if exclude_keywords:
             text_lower = text.lower()
-            for keyword in self.settings.exclude_keywords:
+            for keyword in exclude_keywords:
                 if keyword in text_lower:
-                    logger.debug(f"Skipping message with excluded keyword '{keyword}': {text[:50]}...")
+                    logger.info(f"EXCLUDED: Message contains blocked keyword '{keyword}': {text[:80]}...")
                     return False
         
         # Use utility function for detailed analysis
