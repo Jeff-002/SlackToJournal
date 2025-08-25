@@ -138,21 +138,3 @@ class SlackWorkspace(BaseModel):
     channel_count: Optional[int] = Field(default=None, description="Number of channels")
 
 
-class MCPResponse(BaseModel):
-    """Generic MCP server response."""
-    
-    model_config = ConfigDict(extra="allow")
-    
-    success: bool = Field(description="Whether the request was successful")
-    data: Optional[Dict[str, Any]] = Field(default=None, description="Response data")
-    error: Optional[str] = Field(default=None, description="Error message if failed")
-    timestamp: datetime = Field(default_factory=datetime.now, description="Response timestamp")
-
-
-class SlackAPIError(BaseModel):
-    """Slack API error response."""
-    
-    ok: bool = Field(default=False, description="Always false for errors")
-    error: str = Field(description="Error type")
-    warning: Optional[str] = Field(default=None, description="Warning message")
-    response_metadata: Optional[Dict[str, Any]] = Field(default=None, description="Response metadata")

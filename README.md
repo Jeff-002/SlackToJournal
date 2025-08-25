@@ -44,7 +44,7 @@ AI驅動的自動化工具，讀取Slack工作區內容並使用直接Slack API�
    # Slack 整合
    SLACK_BOT_TOKEN=xoxb-your-bot-token-here
    SLACK_USER_TOKEN=xoxp-your-user-token-here  # 可選
-   SLACK_WORKSPACE_ID=your-workspace-id
+   SLACK_TARGET_CHANNELS=頻道1,頻道2  # 指定目標頻道（可選）
    
    # 訊息過濾
    SLACK_EXCLUDE_KEYWORDS=sync,test,debug  # 排除關鍵字（逗號分隔）
@@ -119,7 +119,7 @@ python -m src.main recent --days 30
 
 ## 系統架構
 
-- `src/slack_integration/` - 直接Slack API客戶端，具備自動加入頻道功能
+- `src/slack_integration/` - 直接Slack API客戶端和服務
 - `src/ai_processing/` - Gemini 2.0 Flash AI內容分析和日誌生成
 - `src/drive_integration/` - Google Drive認證和檔案操作
 - `src/journal/` - 日誌格式化、範本和匯出管理

@@ -9,6 +9,7 @@ import asyncio
 import sys
 import ssl
 import io
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -265,8 +266,8 @@ async def show_status():
         # Slack service
         slack_status = status['slack_service']
         click.echo(f"  • Slack Integration: {'✅ Ready' if slack_status['initialized'] else '❌ Not Ready'}")
-        if slack_status['settings']['workspace_id']:
-            click.echo(f"    - Workspace: {slack_status['settings']['workspace_id']}")
+        if slack_status['settings'].get('bot_token_configured'):
+            click.echo(f"    - Integration: Direct API")
         
         # AI service
         ai_status = status['ai_service']
@@ -346,11 +347,11 @@ async def run_setup():
     else:
         click.echo("   ✅ Google credentials file found")
     
-    if not settings.slack.workspace_id:
-        click.echo("   ⚠️  Slack workspace ID not configured")
-        click.echo("   Please set SLACK_WORKSPACE_ID environment variable")
+    if not os.getenv('SLACK_BOT_TOKEN'):
+        click.echo("   ⚠️  Slack bot token not configured")
+        click.echo("   Please set SLACK_BOT_TOKEN environment variable")
     else:
-        click.echo("   ✅ Slack workspace ID configured")
+        click.echo("   ✅ Slack bot token configured")
     
     # Setup directories
     click.echo("\n3️⃣  Setting up directories...")
@@ -372,8 +373,8 @@ async def run_setup():
     click.echo("\nNext steps:")
     click.echo("1. Configure your API keys in .env file")
     click.echo("2. Place Google credentials in configs/credentials/")
-    click.echo("3. Run 'slack-to-journal test --test-all' to verify setup")
-    click.echo("4. Run 'slack-to-journal weekly' to generate your first journal")
+    click.echo("3. Run 'python -m src.main test --test-all' to verify setup")
+    click.echo("4. Run 'python -m src.main weekly' to generate your first journal")
 
 
 async def run_tests(test_slack: bool, test_ai: bool, test_drive: bool, test_all: bool):
@@ -444,12 +445,13 @@ async def run_tests(test_slack: bool, test_ai: bool, test_drive: bool, test_all:
     if test_slack:
         click.echo("\n💬 Testing Slack connectivity...")
         try:
-            from src.slack_integration.client import SlackMCPClient
-            slack_client = SlackMCPClient(settings.slack)
+            from src.slack_integration.adapter import SlackAdapter
+            slack_adapter = SlackAdapter(settings.slack)
             
             # Simple connectivity test
-            click.echo(f"   🔗 MCP Server URL: {settings.slack.mcp_server_url}")
-            click.echo(f"   🏢 Workspace ID: {settings.slack.workspace_id}")
+            info = slack_adapter.get_integration_info()
+            click.echo(f"   🔗 Integration Type: {info['type']}")
+            click.echo(f"   🤖 Bot Token: {'✅' if info['bot_token_configured'] else '❌'}")
             click.echo("   ✅ Slack configuration loaded")
             
         except Exception as e:

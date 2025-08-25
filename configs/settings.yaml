@@ -8,8 +8,8 @@ app:
   debug: false
 
 slack:
-  mcp_server_url: "http://localhost:3000"
-  workspace_id: "your-workspace-id"
+  target_channels: []
+  exclude_keywords: ["sync"]
 
 gemini:
   # API key should be set via environment variable GEMINI_API_KEY

@@ -17,14 +17,6 @@ from dotenv import load_dotenv
 class SlackSettings(BaseSettings):
     """Slack integration configuration."""
     
-    mcp_server_url: str = Field(
-        default="http://localhost:3000",
-        description="MCP server URL for Slack integration"
-    )
-    workspace_id: str = Field(
-        default="",
-        description="Slack workspace ID"
-    )
     target_channels: Optional[List[str]] = Field(
         default=None,
         description="Specific channel names to monitor (comma-separated)"

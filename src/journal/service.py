@@ -596,10 +596,7 @@ class JournalService:
         return {
             'slack_service': {
                 'initialized': True,
-                'settings': {
-                    'server_url': self.settings.slack.mcp_server_url,
-                    'workspace_id': self.settings.slack.workspace_id
-                }
+                'settings': self.slack_service.get_integration_info()
             },
             'ai_service': self.ai_service.get_processing_stats(),
             'drive_service': {

@@ -12,7 +12,6 @@ from datetime import datetime
 from ..core.logging import get_logger
 from ..settings import SlackSettings
 from .schemas import SlackMessage
-from .service import SlackService
 from .direct_service import DirectSlackService
 
 
@@ -51,9 +50,7 @@ class SlackAdapter:
             self.service = DirectSlackService(bot_token, user_token, settings)
             self.integration_type = "direct"
         else:
-            logger.info("Using MCP-based Slack integration")
-            self.service = SlackService(settings)
-            self.integration_type = "mcp"
+            raise ValueError("SLACK_BOT_TOKEN is required. Please set it in your environment variables.")
     
     async def get_weekly_work_messages(
         self,
@@ -63,15 +60,7 @@ class SlackAdapter:
         user_name: Optional[str] = None
     ) -> List[SlackMessage]:
         """Get weekly work messages using available integration."""
-        if hasattr(self.service, 'get_weekly_work_messages'):
-            # Check if the service supports user filtering parameters
-            if self.integration_type == "direct":
-                return await self.service.get_weekly_work_messages(target_date, work_channels, user_email, user_name)
-            else:
-                # MCP service doesn't support user filtering yet
-                return await self.service.get_weekly_work_messages(target_date, work_channels)
-        else:
-            raise NotImplementedError("Service doesn't implement get_weekly_work_messages")
+        return await self.service.get_weekly_work_messages(target_date, work_channels, user_email, user_name)
     
     async def get_channel_work_summary(
         self,
@@ -96,11 +85,7 @@ class SlackAdapter:
             "ready": self.service is not None
         }
         
-        if self.integration_type == "direct":
-            info["bot_token_configured"] = bool(os.getenv('SLACK_BOT_TOKEN'))
-            info["user_token_configured"] = bool(os.getenv('SLACK_USER_TOKEN'))
-        else:
-            info["mcp_server_url"] = self.settings.mcp_server_url
-            info["workspace_id"] = self.settings.workspace_id
+        info["bot_token_configured"] = bool(os.getenv('SLACK_BOT_TOKEN'))
+        info["user_token_configured"] = bool(os.getenv('SLACK_USER_TOKEN'))
         
         return info

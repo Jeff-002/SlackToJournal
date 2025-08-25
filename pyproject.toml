@@ -1,13 +1,11 @@
 [project]
 name = "slack-to-journal"
 version = "0.1.0"
-description = "AI-powered Slack to work journal automation using MCP"
+description = "AI-powered Slack to work journal automation using direct API"
 authors = [
     {name = "SlackToJournal Team", email = "team@example.com"},
 ]
 dependencies = [
-    # MCP Integration
-    "mcp>=1.0.0",
     
     # Slack Integration
     "slack-sdk>=3.27.0",

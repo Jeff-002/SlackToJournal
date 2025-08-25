@@ -5,12 +5,12 @@ applyTo: '**'
 # SlackToJournal Agent 需求架構與執行流程
 
 ## 項目概述
-實作一個基於Python的Agent，透過Model Context Protocol (MCP)串接Slack，自動讀取當週工作內容並整理成工作日誌，最後將日誌寫入Google雲端硬碟。
+實作一個基於Python的Agent，透過直接Slack API整合，自動讀取當週工作內容並整理成工作日誌，最後將日誌寫入Google雲端硬碟。
 
 ## 需求分析
 
 ### 功能需求
-1. **Slack整合**: 透過MCP Server連接Slack workspace
+1. **Slack整合**: 透過直接Slack API連接Slack workspace
 2. **內容擷取**: 讀取當週相關工作訊息和討論
 3. **AI驅動內容整理**: 使用Gemini 2.5 AI模型智能分析和條列工作內容
 4. **Google Drive整合**: 將整理後的工作日誌寫入雲端硬碟
@@ -27,7 +27,7 @@ applyTo: '**'
 ### 整體架構
 ```
 [Slack Workspace] 
-       ↓ (MCP)
+       ↓ (Direct API)
 [SlackToJournal Agent]
        ↓ (Gemini 2.5 API)
 [AI內容分析與整理]
@@ -36,7 +36,7 @@ applyTo: '**'
 ```
 
 ### 核心組件
-1. **MCP Client**: 處理與Slack MCP Server的通信
+1. **Direct Slack Client**: 處理與Slack API的直接通信
 2. **AI Content Processor**: 使用Gemini 2.5進行智能內容分析和整理
 3. **Drive Manager**: Google Drive檔案操作
 4. **Scheduler**: 定期任務調度
@@ -45,8 +45,7 @@ applyTo: '**'
 ## 技術選型
 
 ### 主要框架與套件
-- **MCP整合**: `mcp` (官方Python SDK)
-- **Slack API**: `slack-sdk` 或 `mcp-slack-python`
+- **Slack API**: `slack-sdk` (直接 API 整合)
 - **AI模型**: `google-genai` (Gemini 2.5官方Python SDK)
 - **Google Drive API**: `google-api-python-client`
 - **HTTP框架**: `FastAPI` (用於webhook和API)
@@ -71,7 +70,7 @@ applyTo: '**'
 
 2. **數據收集階段**
    - 計算當週時間範圍
-   - 透過MCP從Slack獲取相關訊息
+   - 透過直接 Slack API 獲取相關訊息
    - 過濾和分類工作相關內容
 
 3. **AI內容處理階段**
@@ -119,11 +118,11 @@ applyTo: '**'
    - **Git**: `git add . && git commit -m "feat: setup testing framework"`
 
 ### 第二階段: Slack整合
-1. **設定MCP連接**
-   - 實作MCP客戶端基礎架構
-   - 建立連接配置
-   - **驗證**: 測試MCP連接狀態
-   - **Git**: `git add . && git commit -m "feat: implement MCP client connection"`
+1. **設定 Direct API 連接**
+   - 實作 Slack API 客戶端基礎架構
+   - 建立 API 連接配置
+   - **驗證**: 測試 Slack API 連接狀態
+   - **Git**: `git add . && git commit -m "feat: implement Direct Slack API client connection"`
 
 2. **實作Slack資料擷取**
    - 建立Slack API整合
@@ -297,7 +296,7 @@ SlackToJournal/
 │   │
 │   ├── slack_integration/      # Slack MCP模組
 │   │   ├── __init__.py
-│   │   ├── client.py          # MCP客戶端實現
+│   │   ├── client.py          # Direct Slack API客戶端實現
 │   │   ├── schemas.py         # Pydantic模型
 │   │   ├── service.py         # 業務邏輯
 │   │   └── utils.py           # 輔助工具
@@ -375,8 +374,8 @@ SlackToJournal/
 
 ### 技術選型更新 (基於2025年官方推薦)
 - **專案管理**: `uv` (2025年推薦的快速Python專案管理器)
-- **MCP整合**: `mcp` (官方Python SDK) + `FastMCP` (高階介面)
-- **AI整合**: `google-genai` (2025年GA版本，取代舊版google-generativeai)
+- **Slack 整合**: `slack-sdk` (Direct API 整合)
+- **AI整合**: `google-generativeai` (Gemini 2.0 Flash)
 - **設定管理**: `pydantic-settings` (與FastAPI完美整合)
 - **異步支援**: 全面使用`async/await`模式
 - **型別安全**: 強制使用type hints和Pydantic模型驗證
@@ -385,12 +384,12 @@ SlackToJournal/
 ```yaml
 # configs/settings.yaml
 slack:
-  mcp_server_url: "http://localhost:3000"
-  workspace_id: "your-workspace-id"
+  target_channels: []
+  exclude_keywords: ["sync"]
 
 gemini:
   api_key: "your-gemini-api-key"  # 或使用環境變數
-  model: "gemini-2.5-pro"
+  model: "gemini-2.0-flash-exp"
   max_tokens: 8192
   temperature: 0.1
 

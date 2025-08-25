@@ -1,12 +1,14 @@
-"""Slack integration module using Model Context Protocol (MCP)."""
+"""Slack integration module using direct API integration."""
 
-from .client import SlackMCPClient
-from .service import SlackService
+from .adapter import SlackAdapter
+from .direct_service import DirectSlackService
+from .direct_client import DirectSlackClient
 from .schemas import SlackMessage, SlackChannel, MessageFilter
 
 __all__ = [
-    "SlackMCPClient",
-    "SlackService", 
+    "SlackAdapter",
+    "DirectSlackService",
+    "DirectSlackClient",
     "SlackMessage",
     "SlackChannel",
     "MessageFilter"
