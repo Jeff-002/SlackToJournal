@@ -8,7 +8,6 @@ using the official Slack SDK instead of MCP protocol.
 import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-import time
 
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
@@ -338,6 +337,22 @@ class DirectSlackClient:
                     messages.append(message)
                     collected += 1
                     
+                    # Fetch thread replies if this message has replies and thread inclusion is enabled
+                    reply_count = msg_data.get("reply_count", 0)
+                    has_thread_ts = msg_data.get("thread_ts")
+                    
+                    # Log message details for debugging
+                    logger.info(f"Message {msg_data['ts']}: reply_count={reply_count}, thread_ts={has_thread_ts}, include_threads={message_filter.include_threads if message_filter else False}")
+                    
+                    if (message_filter and message_filter.include_threads and 
+                        reply_count > 0 and 
+                        (not has_thread_ts or has_thread_ts == msg_data["ts"])):  # Parent messages or root thread messages
+                        
+                        logger.info(f"Fetching {reply_count} thread replies for message {msg_data['ts']}")
+                        thread_replies = await self.get_thread_replies(channel_id, msg_data["ts"], message_filter, target_user_ids)
+                        messages.extend(thread_replies)
+                        collected += len(thread_replies)
+                    
                     if collected >= limit:
                         break
                 
@@ -351,6 +366,102 @@ class DirectSlackClient:
         except SlackApiError as e:
             logger.error(f"Failed to get messages from {channel_id}: {e}")
             raise SlackIntegrationError(f"Messages request failed: {e}")
+    
+    async def get_thread_replies(
+        self,
+        channel_id: str,
+        thread_ts: str,
+        message_filter: Optional[MessageFilter] = None,
+        target_user_ids: Optional[set] = None
+    ) -> List[SlackMessage]:
+        """Get replies for a specific thread."""
+        if not self._authenticated:
+            await self.authenticate()
+        
+        try:
+            messages = []
+            cursor = None
+            
+            while True:
+                response = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self.bot_client.conversations_replies(
+                        channel=channel_id,
+                        ts=thread_ts,
+                        cursor=cursor,
+                        limit=200
+                    )
+                )
+                
+                if not response["ok"]:
+                    logger.warning(f"Failed to get thread replies for {thread_ts}: {response.get('error')}")
+                    break
+                
+                # Skip the first message if it's the parent (it has the same ts as thread_ts)
+                reply_messages = response["messages"][1:] if response["messages"] and response["messages"][0]["ts"] == thread_ts else response["messages"]
+                
+                for reply_data in reply_messages:
+                    # Skip bot messages if requested
+                    if message_filter and not message_filter.include_bots:
+                        if reply_data.get("bot_id") or reply_data.get("subtype") == "bot_message":
+                            continue
+                    
+                    # Filter by user if specified
+                    if target_user_ids:
+                        reply_user = reply_data.get("user")
+                        if not reply_user or reply_user not in target_user_ids:
+                            continue
+                    
+                    # Skip very short messages
+                    text = reply_data.get("text", "")
+                    if message_filter and message_filter.min_length:
+                        if len(text) < message_filter.min_length:
+                            continue
+                    
+                    # Get user info for display name
+                    user_id = reply_data.get("user")
+                    user_name = None
+                    user_real_name = None
+                    
+                    if user_id:
+                        try:
+                            user_info = await self.get_user_info(user_id)
+                            if user_info:
+                                user_name = user_info.name
+                                user_real_name = user_info.display_name or user_info.real_name
+                        except Exception as e:
+                            logger.warning(f"Failed to get user info for {user_id}: {e}")
+                    
+                    reply_message = SlackMessage(
+                        ts=reply_data["ts"],
+                        user=user_id,
+                        user_name=user_name,
+                        user_real_name=user_real_name,
+                        text=text,
+                        channel=channel_id,
+                        thread_ts=reply_data.get("thread_ts"),
+                        reply_count=0,  # Reply messages don't have their own replies
+                        bot_id=reply_data.get("bot_id"),
+                        username=reply_data.get("username"),
+                        attachments=reply_data.get("attachments", []),
+                        files=reply_data.get("files", []),
+                        reactions=reply_data.get("reactions", [])
+                    )
+                    messages.append(reply_message)
+                
+                cursor = response.get("response_metadata", {}).get("next_cursor")
+                if not cursor:
+                    break
+            
+            if messages:
+                logger.info(f"Retrieved {len(messages)} thread replies for {thread_ts}")
+            
+            return messages
+            
+        except SlackApiError as e:
+            logger.error(f"Failed to get thread replies for {thread_ts}: {e}")
+            # Don't raise exception here, just return empty list to continue processing other messages
+            return []
     
     async def get_user_info(self, user_id: str) -> Optional[SlackUser]:
         """Get user information."""

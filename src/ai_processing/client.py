@@ -436,6 +436,9 @@ Respond in JSON format:
         # Filter out messages containing excluded keywords before sending to AI
         filtered_messages = self._filter_excluded_messages(request.messages)
         
+        # Check if we should include user names in the output
+        include_user_names = request.context and request.context.get('include_user_names', False)
+        
         messages_text = ""
         for i, msg in enumerate(filtered_messages[:50], 1):
             user = msg.get('user', 'Unknown')
@@ -443,10 +446,18 @@ Respond in JSON format:
             channel = msg.get('channel', 'general')
             timestamp = msg.get('timestamp', 'Unknown time')
             
+            # Get user display name for weekly summaries
+            user_real_name = msg.get('user_real_name')
+            user_name = msg.get('user_name')
+            user_display_name = user_real_name or user_name or user
+            
             # Pre-analyze message for tag suggestion
             tag_hint = self._get_tag_suggestion(text)
             
-            messages_text += f"[{i}] {timestamp} - {user} in #{channel}:\n{text}\n[建議標籤: {tag_hint}]\n\n"
+            if include_user_names:
+                messages_text += f"[{i}] {timestamp} - {user} in #{channel}:\n{text}\n[建議標籤: {tag_hint}]\n[使用者名稱: {user_display_name}]\n\n"
+            else:
+                messages_text += f"[{i}] {timestamp} - {user} in #{channel}:\n{text}\n[建議標籤: {tag_hint}]\n\n"
         
         now = datetime.now()
         
@@ -688,16 +699,12 @@ Respond in JSON format:
         # This method should no longer be needed since we get real names from Slack API
         # But keeping as fallback for any missing users
         
-        # Check if we have a mapping for this user
-        if user_id in user_mappings:
-            display_name = user_mappings[user_id]
+        # Try to get a more readable name from the user ID
+        # If it starts with U and is 11 characters, it's likely a Slack user ID
+        if user_id.startswith('U') and len(user_id) == 11:
+            display_name = f"User_{user_id[-4:]}"  # Show last 4 characters
         else:
-            # Try to get a more readable name from the user ID
-            # If it starts with U and is 11 characters, it's likely a Slack user ID
-            if user_id.startswith('U') and len(user_id) == 11:
-                display_name = f"User_{user_id[-4:]}"  # Show last 4 characters
-            else:
-                display_name = user_id
+            display_name = user_id
         
         # Cache the result
         self._user_cache[user_id] = display_name

@@ -14,7 +14,6 @@ from src.settings import (
     LoggingSettings,
     load_settings
 )
-from src.core.exceptions import ConfigurationError
 
 
 class TestSlackSettings:

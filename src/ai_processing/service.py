@@ -48,7 +48,8 @@ class AIProcessingService:
         messages: List[Dict[str, Any]],
         context: PromptContext,
         include_trends: bool = False,
-        custom_focus: Optional[List[str]] = None
+        custom_focus: Optional[List[str]] = None,
+        include_user_names: bool = False
     ) -> AIResponse:
         """
         Generate a complete weekly work journal from Slack messages.
@@ -79,7 +80,7 @@ class AIProcessingService:
             # Create AI request
             ai_request = AIRequest(
                 messages=messages,
-                context=context.model_dump(),
+                context={**context.model_dump(), "include_user_names": include_user_names},
                 model_type=AIModelType(self.settings.model),
                 temperature=self.settings.temperature,
                 max_tokens=self.settings.max_tokens,

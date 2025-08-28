@@ -13,17 +13,14 @@ slack:
 
 gemini:
   # API key should be set via environment variable GEMINI_API_KEY
-  model: "gemini-2.5-flash-exp"
+  # Model can be overridden via environment variable GEMINI_MODEL
+  model: "gemini-2.5-flash"
   max_tokens: 8192
   temperature: 0.1
 
 google_drive:
   credentials_file: "configs/credentials/google_credentials.json"
   # Folder ID should be set via environment variable GOOGLE_FOLDER_ID
-
-schedule:
-  cron: "0 17 * * 5"  # Every Friday at 5 PM
-  timezone: "Asia/Taipei"
 
 logging:
   level: "INFO"

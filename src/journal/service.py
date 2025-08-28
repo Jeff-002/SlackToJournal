@@ -107,6 +107,10 @@ class JournalService:
             # Step 2: Process with AI
             from ..ai_processing.schemas import PromptContext
             
+            # Determine if we should include user names in output
+            # Include names if no specific user filter was provided
+            include_user_names = not (user_email or filter_user_name)
+            
             context = PromptContext(
                 user_name=filter_user_name or "Team Member",
                 role="Team Member", 
@@ -131,7 +135,8 @@ class JournalService:
             ai_response = await self.ai_service.generate_weekly_journal(
                 messages=formatted_messages,
                 context=context,
-                include_trends=False
+                include_trends=False,
+                include_user_names=include_user_names
             )
             
             if not ai_response.success:
@@ -574,35 +579,6 @@ class JournalService:
                 'error': str(e)
             }
     
-    async def get_recent_journals(self, days_back: int = 30) -> List[Dict[str, Any]]:
-        """
-        Get recently generated journals from Drive.
-        
-        Args:
-            days_back: Number of days to look back
-            
-        Returns:
-            List of recent journal information
-        """
-        try:
-            recent_files = await self.drive_service.get_recent_journals(days_back)
-            
-            journals = []
-            for file in recent_files:
-                journals.append({
-                    'id': file.id,
-                    'name': file.name,
-                    'created_time': file.created_time,
-                    'modified_time': file.modified_time,
-                    'web_view_link': file.web_view_link,
-                    'size': file.size
-                })
-            
-            return journals
-            
-        except Exception as e:
-            logger.error(f"Failed to get recent journals: {e}")
-            return []
     
     def get_service_status(self) -> Dict[str, Any]:
         """

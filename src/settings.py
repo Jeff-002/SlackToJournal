@@ -52,7 +52,7 @@ class GeminiSettings(BaseSettings):
     
     api_key: str = Field(default="", description="Gemini API key")
     model: str = Field(
-        default="gemini-2.0-flash-exp",
+        default="gemini-2.5-flash",
         description="Gemini model name"
     )
     max_tokens: int = Field(

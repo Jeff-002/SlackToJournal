@@ -376,7 +376,7 @@ SlackToJournal/
 ### 技術選型更新 (基於2025年官方推薦)
 - **專案管理**: `uv` (2025年推薦的快速Python專案管理器)
 - **Slack 整合**: `slack-sdk` (Direct API 整合)
-- **AI整合**: `google-generativeai` (Gemini 2.0 Flash)
+- **AI整合**: `google-generativeai` (Gemini 2.5 Flash)
 - **設定管理**: `pydantic-settings` (與FastAPI完美整合)
 - **異步支援**: 全面使用`async/await`模式
 - **型別安全**: 強制使用type hints和Pydantic模型驗證
@@ -390,7 +390,7 @@ slack:
 
 gemini:
   api_key: "your-gemini-api-key"  # 或使用環境變數
-  model: "gemini-2.0-flash-exp"
+  model: "gemini-2.5-flash"
   max_tokens: 8192
   temperature: 0.1
 

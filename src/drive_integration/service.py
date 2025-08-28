@@ -147,44 +147,6 @@ class DriveService:
         
         return result
     
-    async def get_recent_journals(
-        self,
-        days_back: int = 30
-    ) -> List[DriveFile]:
-        """
-        Get recently uploaded journal files.
-        
-        Args:
-            days_back: Number of days to look back
-            
-        Returns:
-            List of recent journal files
-        """
-        await self.client.authenticate()
-        
-        # Calculate date range
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days_back)
-        
-        # Search for journal files
-        search_query = SearchQuery(
-            query="journal OR summary",
-            created_after=start_date,
-            created_before=end_date,
-            max_results=50,
-            order_by="createdTime desc"
-        )
-        
-        files = self.client.search_files(search_query)
-        
-        # Filter for journal-related files
-        journal_files = []
-        for file in files:
-            if any(keyword in file.name.lower() for keyword in ['journal', 'summary', 'work']):
-                journal_files.append(file)
-        
-        logger.info(f"Found {len(journal_files)} recent journal files")
-        return journal_files
     
     async def backup_journal_data(
         self,

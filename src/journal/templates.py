@@ -8,7 +8,6 @@ and utilities for formatting structured content.
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from string import Template
-import json
 
 from ..core.logging import get_logger
 from .schemas import JournalFormat, TemplateConfig, JournalMetadata

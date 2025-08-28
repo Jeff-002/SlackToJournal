@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 class AIModelType(str, Enum):
     """Available AI model types."""
+    GEMINI_2_5_FLASH = "gemini-2.5-flash"
     GEMINI_2_0_FLASH = "gemini-2.0-flash-exp"
     GEMINI_1_5_PRO = "gemini-1.5-pro"
     GEMINI_1_5_FLASH = "gemini-1.5-flash"
@@ -156,7 +157,7 @@ class AIRequest(BaseModel):
     context: Optional[Dict[str, Any]] = Field(default=None, description="Additional context")
     
     # Processing parameters
-    model_type: AIModelType = Field(default=AIModelType.GEMINI_2_0_FLASH, description="AI model to use")
+    model_type: AIModelType = Field(default=AIModelType.GEMINI_2_5_FLASH, description="AI model to use")
     temperature: float = Field(default=0.1, ge=0.0, le=2.0, description="Response creativity")
     max_tokens: int = Field(default=8192, description="Maximum response length")
     

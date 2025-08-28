@@ -281,17 +281,23 @@ class DirectSlackService:
         return work_channels
     
     def _filter_work_messages(self, messages: List[SlackMessage]) -> List[SlackMessage]:
-        """Filter messages to include only work-related content."""
+        """Filter messages to include only work-related content and remove duplicates."""
         work_messages = []
+        seen_timestamps = set()
         
         for message in messages:
             if self._is_work_related_message(message):
-                work_messages.append(message)
+                # Use timestamp as unique identifier to prevent duplicates
+                if message.ts not in seen_timestamps:
+                    work_messages.append(message)
+                    seen_timestamps.add(message.ts)
+                else:
+                    logger.debug(f"Skipping duplicate message with timestamp: {message.ts}")
         
         # Sort by timestamp
         work_messages.sort(key=lambda m: float(m.ts))
         
-        logger.debug(f"Filtered {len(work_messages)} work messages from {len(messages)} total")
+        logger.info(f"Filtered {len(work_messages)} unique work messages from {len(messages)} total messages")
         return work_messages
     
     def _is_work_related_message(self, message: SlackMessage) -> bool:

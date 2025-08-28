@@ -2,6 +2,7 @@
 name = "slack-to-journal"
 version = "0.1.0"
 description = "AI-powered Slack to work journal automation using direct API"
+requires-python = ">=3.11"
 authors = [
     {name = "SlackToJournal Team", email = "team@example.com"},
 ]
@@ -19,23 +20,13 @@ dependencies = [
     "google-auth-oauthlib>=1.2.0",
     "google-auth>=2.34.0",
     
-    # FastAPI Framework
-    "fastapi>=0.110.0",
-    "uvicorn[standard]>=0.29.0",
-    
     # Settings Management
     "pydantic>=2.7.0",
     "pydantic-settings>=2.2.0",
     "python-dotenv>=1.0.0",
     
-    # Task Scheduling
-    "apscheduler>=3.10.0",
-    
     # Logging
     "loguru>=0.7.0",
-    
-    # HTTP Client
-    "httpx>=0.27.0",
     
     # YAML Support
     "pyyaml>=6.0.0",
@@ -59,11 +50,21 @@ dev = [
     "black>=24.0.0",
     "isort>=5.13.0",
     "flake8>=7.0.0",
-    "mypy>=1.10.0",
+    "mypy>=1.10.0,<1.18.0",
+    # Alternative: "pyright>=1.1.0",  # Faster alternative to mypy
     
     # Documentation
     "mkdocs>=1.6.0",
     "mkdocs-material>=9.5.0",
+]
+
+# Lightweight development group without heavy type checking
+dev-lite = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "black>=24.0.0",
+    "isort>=5.13.0",
+    "flake8>=7.0.0",
 ]
 
 [build-system]

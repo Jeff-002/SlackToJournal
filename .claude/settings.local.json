@@ -15,7 +15,8 @@
       "Bash(set PYTHONIOENCODING=utf-8)",
       "Bash(chcp:*)",
       "Bash(powershell:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(git log:*)"
     ],
     "deny": [],
     "ask": []

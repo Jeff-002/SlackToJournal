@@ -86,13 +86,6 @@ def status():
 
 
 @cli.command()
-@click.option('--days', '-d', default=30, help='Number of days to look back')
-def recent(days: int):
-    """Show recent journal entries."""
-    asyncio.run(show_recent_journals(days))
-
-
-@cli.command()
 def setup():
     """Run initial setup and configuration."""
     asyncio.run(run_setup())
@@ -286,39 +279,6 @@ async def show_status():
         
     except Exception as e:
         logger.error(f"Status check failed: {e}")
-        click.echo(f"❌ Error: {str(e)}")
-        sys.exit(1)
-
-
-async def show_recent_journals(days_back: int):
-    """Show recent journal entries."""
-    try:
-        click.echo(f"📚 Fetching recent journals (last {days_back} days)...")
-        
-        # Initialize journal service
-        journal_service = JournalService(settings)
-        
-        # Get recent journals
-        journals = await journal_service.get_recent_journals(days_back)
-        
-        if not journals:
-            click.echo("📭 No recent journals found")
-            return
-        
-        click.echo(f"\n📋 Recent Journals ({len(journals)} found):")
-        
-        for journal in journals:
-            created_date = journal['created_time'].strftime('%Y-%m-%d %H:%M') if journal['created_time'] else 'Unknown'
-            size_mb = int(journal['size']) / (1024*1024) if journal['size'] and journal['size'].isdigit() else 0
-            
-            click.echo(f"\n  📄 {journal['name']}")
-            click.echo(f"     Created: {created_date}")
-            click.echo(f"     Size: {size_mb:.1f} MB")
-            if journal['web_view_link']:
-                click.echo(f"     Link: {journal['web_view_link']}")
-        
-    except Exception as e:
-        logger.error(f"Failed to fetch recent journals: {e}")
         click.echo(f"❌ Error: {str(e)}")
         sys.exit(1)
 
