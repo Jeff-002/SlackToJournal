@@ -36,6 +36,9 @@ dependencies = [
     
     # CLI interface
     "click>=8.1.0",
+    
+    # GUI interface
+    "nicegui>=1.4.0",
 ]
 
 [dependency-groups]

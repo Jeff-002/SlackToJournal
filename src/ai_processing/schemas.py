@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, ConfigDict
 class AIModelType(str, Enum):
     """Available AI model types."""
     GEMINI_2_5_FLASH = "gemini-2.5-flash"
+    GEMINI_2_5_FLASH_LITE = "gemini-2.5-flash-lite"
     GEMINI_2_0_FLASH = "gemini-2.0-flash-exp"
     GEMINI_1_5_PRO = "gemini-1.5-pro"
     GEMINI_1_5_FLASH = "gemini-1.5-flash"
